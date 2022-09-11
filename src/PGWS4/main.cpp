@@ -137,13 +137,18 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			tmpAdapter = adpt;
 			break;
 		}
+		else if (strDesc.find(L"Radeon") != std::string::npos)
+		{
+			tmpAdapter = adpt;
+			break;
+		}
 	}
 
 	// Direct3D デバイスの初期化
 	D3D_FEATURE_LEVEL featureLevel;
 	for (auto lv : levels)
 	{
-		if (D3D12CreateDevice(nullptr, lv, IID_PPV_ARGS(&_dev)) == S_OK)
+		if (D3D12CreateDevice(tmpAdapter, lv, IID_PPV_ARGS(&_dev)) == S_OK)
 		{
 			featureLevel = lv;
 			break; // 生成可能なバージョンが見つかったらループを打ち切り
