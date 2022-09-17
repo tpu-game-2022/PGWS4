@@ -9,9 +9,12 @@
 #include <iostream>
 #endif
 
+
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")
 #pragma comment(lib,"d3dcompiler.lib")
+
+
 
 using namespace std;
 using namespace DirectX;
@@ -41,6 +44,19 @@ LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	}
 	return DefWindowProc(hwnd, msg, wparam, lparam); // 既定の処理を行う
 }
+
+#ifdef _DEBUG
+void EnableDebugLayer()
+{
+	ID3D12Debug* debugLayer = nullptr;
+	HRESULT result = D3D12GetDebugInterface(IID_PPV_ARGS(&debugLayer));
+	if (!SUCCEEDED(result)) return;
+
+	debugLayer->EnableDebugLayer(); // デバッグレイヤーを有効化する
+	debugLayer->Release(); // 有効化したらインターフェイスを解放する
+}
+#endif// _DEBUG
+
 
 #ifdef _DEBUG
 int main()
@@ -86,6 +102,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		w.hInstance, // 呼び出しアプリケーションハンドル
 		nullptr); // 追加パラメーター
 
+#ifdef _DEBUG
+	//デバッグレイヤーをオンに
+	EnableDebugLayer();
+#endif
+
 	D3D_FEATURE_LEVEL levels[] =
 	{
 	 D3D_FEATURE_LEVEL_12_1,
@@ -94,7 +115,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	 D3D_FEATURE_LEVEL_11_0,
 	};
 
+#ifdef _DEBUG
+	auto result = CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(&_dxgiFactory));
+#else
 	auto result = CreateDXGIFactory1(IID_PPV_ARGS(&_dxgiFactory));
+#endif
+
 	// アダプターの列挙用
 	std::vector <IDXGIAdapter*> adapters;
 	// ここに特定の名前を持つアダプターオブジェクトが入る
@@ -189,7 +215,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	result = _swapchain->GetDesc(&swcDesc);
 
 	std::vector<ID3D12Resource*> _backBuffers(swcDesc.BufferCount);
-	for (unsigned int idx = 0; idx < swcDesc.BufferCount; ++idx)
+	for (UINT idx = 0; idx < swcDesc.BufferCount; ++idx)
 	{
 		result = _swapchain->GetBuffer(idx, IID_PPV_ARGS(&_backBuffers[idx]));
 		D3D12_CPU_DESCRIPTOR_HANDLE handle
@@ -198,6 +224,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 		_dev->CreateRenderTargetView(_backBuffers[idx], nullptr, handle);
 	}
+
+	ID3D12Fence* _fence = nullptr;
+	UINT64 _fenceVal = 0;
+	result = _dev->CreateFence(_fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_fence));
 
 	// ウィンドウ表示
 	ShowWindow(hwnd, SW_SHOW);
@@ -431,6 +461,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		//バックバッファのインデックスを取得
 		auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
 
+		D3D12_RESOURCE_BARRIER BarrierDesc = {};
+		BarrierDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;// 遷移
+		BarrierDesc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;// 特に指定なし
+		BarrierDesc.Transition.pResource = _backBuffers[bbIdx];// バックバッファーリソース
+		BarrierDesc.Transition.Subresource = 0;
+		BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;// 直前はPRESENT 状態
+		BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;// 今からRT状態
+		_cmdList->ResourceBarrier(1, &BarrierDesc);// バリア指定実行
+
 		_cmdList->SetPipelineState(_pipelinestate);
 
 		//レンダーターゲットを指定
@@ -455,6 +494,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 		_cmdList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 
+		// 前後だけ入れ替える
+		BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+		_cmdList->ResourceBarrier(1, &BarrierDesc);
+
 		// 命令のクローズ
 		_cmdList->Close();
 
@@ -462,12 +506,60 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		ID3D12CommandList* cmdlists[] = { _cmdList };
 		_cmdQueue->ExecuteCommandLists(1, cmdlists);
 
+		////待ち
+		_cmdQueue->Signal(_fence, ++_fenceVal);
+
+		if (_fence->GetCompletedValue() != _fenceVal) {
+			auto event = CreateEvent(nullptr, false, false, nullptr);
+			_fence->SetEventOnCompletion(_fenceVal, event);// イベントハンドルの取得
+			WaitForSingleObject(event, INFINITE);// イベントが発生するまで無限に待つ
+			CloseHandle(event);// イベントハンドルを閉じる
+		}
+
 		_cmdAllocator->Reset(); // キューをクリア
 		_cmdList->Reset(_cmdAllocator, _pipelinestate); // 再びコマンドリストをためる準備
 
 		// フリップ
 		_swapchain->Present(1, 0);
 	}
+
+	_cmdList->Close();
+	_cmdAllocator->Reset(); // キューをクリア
+	////待ち
+	_cmdQueue->Signal(_fence, ++_fenceVal);
+
+	if (_fence->GetCompletedValue() != _fenceVal) {
+		auto event = CreateEvent(nullptr, false, false, nullptr);
+		_fence->SetEventOnCompletion(_fenceVal, event);// イベントハンドルの取得
+		WaitForSingleObject(event, INFINITE);// イベントが発生するまで無限に待つ
+		CloseHandle(event);// イベントハンドルを閉じる
+	}
+
+	// これでは開放しきれない...
+	_pipelinestate->Release();
+	rootsignature->Release();
+	_psBlob->Release();
+	_vsBlob->Release();
+	idxBuff->Release();
+	vertBuff->Release();
+	_fence->Release();
+	rtvHeaps->Release();
+	_swapchain->Release();
+	_cmdQueue->Release();
+	_cmdList->Release();
+	_cmdAllocator->Release();
+	_dxgiFactory->Release();
+	_dev->Release();
+
+#ifdef _DEBUG
+	// メモリ未開放の詳細表示
+	ID3D12DebugDevice* debugInterface;
+	if (SUCCEEDED(_dev->QueryInterface(&debugInterface)))
+	{
+		debugInterface->ReportLiveDeviceObjects(D3D12_RLDO_DETAIL | D3D12_RLDO_IGNORE_INTERNAL);
+		debugInterface->Release();
+	}
+#endif// _DEBUG
 
 	// もうクラスは使わないので登録解除する
 	UnregisterClass(w.lpszClassName, w.hInstance);
