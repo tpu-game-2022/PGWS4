@@ -232,11 +232,17 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// ウィンドウ表示
 	ShowWindow(hwnd, SW_SHOW);
 
-	XMFLOAT3 vertices[] = {
-		{-0.4f,-0.7f,0.0f} ,//左下
-		{-0.4f,+0.7f,0.0f} ,//左上
-		{+0.4f,-0.7f,0.0f} ,//右下
-		{+0.4f,+0.7f,0.0f} ,//右上
+	// 頂点データ構造体
+	struct Vertex {
+		XMFLOAT3 pos; // xyz座標
+		XMFLOAT2 uv; // uv座標
+	};
+
+	Vertex vertices[] = {
+		{{-0.4f,-0.7f,0.0f},{0.0f,1.0f}},//左下
+		{{-0.4f,+0.7f,0.0f},{0.0f,0.0f}},//左上
+		{{+0.4f,-0.7f,0.0f},{1.0f,1.0f}},//右下
+		{{+0.4f,+0.7f,0.0f},{1.0f,0.0f}},//右上
 	};
 
 	D3D12_HEAP_PROPERTIES heapprop = {};
@@ -265,7 +271,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		nullptr,
 		IID_PPV_ARGS(&vertBuff));
 
-	XMFLOAT3* vertMap = nullptr;
+	Vertex* vertMap = nullptr; // 型をVertex に変更
 	result = vertBuff->Map(0, nullptr, (void**)&vertMap);
 	std::copy(std::begin(vertices), std::end(vertices), vertMap);
 	vertBuff->Unmap(0, nullptr);
@@ -358,7 +364,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	{
 		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 
 			D3D12_APPEND_ALIGNED_ELEMENT, 
-			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0
+		},
+		{ // uv（追加）
+			"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,
+			0, D3D12_APPEND_ALIGNED_ELEMENT,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0
+		},
 	};
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpipeline = {};
