@@ -46,15 +46,6 @@ LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	return DefWindowProc(hwnd, msg, wparam, lparam); // 既定の処理を行う
 }
 
-void EnableDebugLayer()
-{
-	ID3D12Debug* debugLayer = nullptr;
-	auto result = D3D12GetDebugInterface(
-		IID_PPV_ARGS(&debugLayer));
-	debugLayer->EnableDebugLayer(); // デバッグレイヤーを有効化する
-	debugLayer->Release(); // 有効化したらインターフェイスを解放する
-}
-
 #ifdef _DEBUG
 void EnableDebugLayer()
 {
@@ -237,7 +228,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			= rtvHeaps->GetCPUDescriptorHandleForHeapStart();
 		handle.ptr += idx * _dev->GetDescriptorHandleIncrementSize(
 			D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-		_dev->CreateRenderTargetView(_backBuffers[idx], nullptr, handle);
+		_dev->CreateRenderTargetView(_backBuffers[idx], &rtvDesc, handle);
 	}
 
 	ID3D12Fence* _fence = nullptr;
@@ -427,7 +418,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	gpipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;// 三角形で構成
 
 	gpipeline.NumRenderTargets = 1;//今は１つのみ
-	gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;//0～1に正規化されたRGBA
+	gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;//0～1に正規化されたRGBA
 
 	gpipeline.SampleDesc.Count = 1;//サンプリングは1ピクセルにつき１
 	gpipeline.SampleDesc.Quality = 0;//クオリティは最低
@@ -516,20 +507,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		&metadata, scratchImg);
 
 	auto img = scratchImg.GetImage(0, 0, 0);//生データ抽出
-
-	struct TexRGBA
-	{
-		unsigned char R, G, B, A;
-	};
-
-	std::vector<TexRGBA> texturedata(256 * 256);
-	for (auto& rgba : texturedata)
-	{
-		rgba.R = rand() % 256;
-		rgba.G = rand() % 256;
-		rgba.B = rand() % 256;
-		rgba.A = 255; // αは1.0 とする
-	}
 
 	// WriteToSubresource で転送するためのヒープ設定
 	D3D12_HEAP_PROPERTIES texHeapProp = {};
