@@ -5,11 +5,12 @@
 #include<DirectXMath.h>
 #include<vector>
 #include<d3dcompiler.h>
+#include <DirectXTex.h>
 #ifdef _DEBUG
 #include <iostream>
 #endif
 
-
+#pragma comment (lib, "DirectXTex.lib")
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")
 #pragma comment(lib,"d3dcompiler.lib")
@@ -213,6 +214,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	DXGI_SWAP_CHAIN_DESC swcDesc = {};
 	result = _swapchain->GetDesc(&swcDesc);
+
+	// SRGB レンダーターゲットビュー設定
+	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+	rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; // ガンマ補正あり（sRGB）
+	rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
 	std::vector<ID3D12Resource*> _backBuffers(swcDesc.BufferCount);
 	for (UINT idx = 0; idx < swcDesc.BufferCount; ++idx)
@@ -492,6 +498,16 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	scissorrect.right = scissorrect.left + window_width; // 切り抜き右座標
 	scissorrect.bottom = scissorrect.top + window_height; // 切り抜き下座標
 
+	//WICテクスチャのロード
+	TexMetadata metadata = {};
+	ScratchImage scratchImg = {};
+
+	result = LoadFromWICFile(
+		L"img/textest.png", WIC_FLAGS_NONE, 
+		&metadata, scratchImg);
+
+	auto img = scratchImg.GetImage(0, 0, 0);//生データ抽出
+
 	struct TexRGBA
 	{
 		unsigned char R, G, B, A;
@@ -519,14 +535,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	texHeapProp.VisibleNodeMask = 0;
 
 	D3D12_RESOURCE_DESC resDesc = {};
-	resDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // RGBA フォーマット
-	resDesc.Width = 256; // 幅
-	resDesc.Height = 256; // 高さ
-	resDesc.DepthOrArraySize = 1; // 2D で配列でもないので１
+	resDesc.Format = metadata.format;
+	resDesc.Width = static_cast<UINT>(metadata.width); // 幅
+	resDesc.Height = static_cast<UINT>(metadata.height); // 高さ
+	resDesc.DepthOrArraySize = static_cast<uint16_t>(metadata.arraySize);
 	resDesc.SampleDesc.Count = 1; // 通常テクスチャなのでアンチエイリアシングしない
 	resDesc.SampleDesc.Quality = 0; // クオリティは最低
-	resDesc.MipLevels = 1; // ミップマップしないのでミップ数は1 つ
-	resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D; // 2D テクスチャ用
+	resDesc.MipLevels = static_cast<uint16_t>(metadata.mipLevels);
+	resDesc.Dimension = static_cast<D3D12_RESOURCE_DIMENSION>(metadata.dimension);
 	resDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN; // レイアウトは決定しない
 	resDesc.Flags = D3D12_RESOURCE_FLAG_NONE; // 特にフラグなし
 
@@ -541,10 +557,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	result = texbuff->WriteToSubresource(
 		0,
-		nullptr, // 全領域へコピー
-		texturedata.data(), // 元データアドレス
-		sizeof(TexRGBA) * 256, // 1 ラインサイズ
-		sizeof(TexRGBA) * (UINT)texturedata.size() // 全サイズ
+		nullptr,//全領域へコピー
+		img->pixels,//元データアドレス
+		static_cast<UINT>(img->rowPitch),//1ラインサイズ
+		static_cast<UINT>(img->slicePitch)//全サイズ
 	);
 
 	ID3D12DescriptorHeap* texDescHeap = nullptr;
@@ -561,7 +577,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	result = _dev->CreateDescriptorHeap(&descHeapDesc, IID_PPV_ARGS(&texDescHeap));
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // RGBA（0.0f ～ 1.0f に正規化）
+	srvDesc.Format = metadata.format;
 	srvDesc.Shader4ComponentMapping =
 		D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; // 後述
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D; // 2D テクスチャ
