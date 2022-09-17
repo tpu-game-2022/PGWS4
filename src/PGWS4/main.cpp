@@ -6,6 +6,7 @@
 #include<vector>
 #include<d3dcompiler.h>
 #include <DirectXTex.h>
+#include <d3dx12.h>
 #ifdef _DEBUG
 #include <iostream>
 #endif
@@ -278,10 +279,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	ID3D12Resource* vertBuff = nullptr;
 
+	auto heapPropDx = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	auto resDescDx = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertices));
 	result = _dev->CreateCommittedResource(
-		&heapprop,
+		&heapPropDx,	// UPLOAD ヒープとして
 		D3D12_HEAP_FLAG_NONE,
-		&resdesc,
+		&resDescDx,	// サイズに応じて適切な設定をしてくれる
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(&vertBuff));
@@ -619,7 +622,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	src.PlacedFootprint.Footprint.Height = static_cast<UINT>(metadata.height);
 	src.PlacedFootprint.Footprint.Depth = static_cast<UINT>(metadata.depth);
 	src.PlacedFootprint.Footprint.RowPitch =
-		AlignmentedSize(img->rowPitch, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
+		static_cast<UINT>(AlignmentedSize(img->rowPitch, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT));
 	src.PlacedFootprint.Footprint.Format = img->format;
 
 	D3D12_TEXTURE_COPY_LOCATION dst = {};
@@ -705,13 +708,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		//バックバッファのインデックスを取得
 		auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
 
-		D3D12_RESOURCE_BARRIER BarrierDesc = {};
-		BarrierDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;// 遷移
-		BarrierDesc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;// 特に指定なし
-		BarrierDesc.Transition.pResource = _backBuffers[bbIdx];// バックバッファーリソース
-		BarrierDesc.Transition.Subresource = 0;
-		BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;// 直前はPRESENT 状態
-		BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;// 今からRT状態
+		auto BarrierDesc = CD3DX12_RESOURCE_BARRIER::Transition(
+			_backBuffers[bbIdx], D3D12_RESOURCE_STATE_PRESENT,
+			D3D12_RESOURCE_STATE_RENDER_TARGET); // これだけで済む
 		_cmdList->ResourceBarrier(1, &BarrierDesc);// バリア指定実行
 
 		_cmdList->SetPipelineState(_pipelinestate);
@@ -743,8 +742,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		_cmdList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 
 		// 前後だけ入れ替える
-		BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+		BarrierDesc = CD3DX12_RESOURCE_BARRIER::Transition(
+			_backBuffers[bbIdx], D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_PRESENT);
 		_cmdList->ResourceBarrier(1, &BarrierDesc);
 
 		// 命令のクローズ
