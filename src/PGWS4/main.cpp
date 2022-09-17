@@ -46,6 +46,15 @@ LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	return DefWindowProc(hwnd, msg, wparam, lparam); // 既定の処理を行う
 }
 
+void EnableDebugLayer()
+{
+	ID3D12Debug* debugLayer = nullptr;
+	auto result = D3D12GetDebugInterface(
+		IID_PPV_ARGS(&debugLayer));
+	debugLayer->EnableDebugLayer(); // デバッグレイヤーを有効化する
+	debugLayer->Release(); // 有効化したらインターフェイスを解放する
+}
+
 #ifdef _DEBUG
 void EnableDebugLayer()
 {
