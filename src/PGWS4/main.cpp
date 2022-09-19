@@ -454,22 +454,17 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	descTblRange[1].OffsetInDescriptorsFromTableStart =
 		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER rootparam[2] = {};
+	D3D12_ROOT_PARAMETER rootparam = {};
+	rootparam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	// 配列先頭アドレス
+	rootparam.DescriptorTable.pDescriptorRanges = descTblRange;
+	// ディスクリプタレンジ数
+	rootparam.DescriptorTable.NumDescriptorRanges = 2;
+	// すべてのシェーダーから見える
+	rootparam.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-	rootparam[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-	rootparam[0].DescriptorTable.pDescriptorRanges = &descTblRange[0];
-	rootparam[0].DescriptorTable.NumDescriptorRanges = 1; // ディスクリプタレンジ数
-	rootparam[0].ShaderVisibility =
-		D3D12_SHADER_VISIBILITY_PIXEL; // ピクセルシェーダーから見える
-
-	rootparam[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-	rootparam[1].DescriptorTable.pDescriptorRanges = &descTblRange[1];
-	rootparam[1].DescriptorTable.NumDescriptorRanges = 1; // ディスクリプタレンジ数
-	rootparam[1].ShaderVisibility =
-		D3D12_SHADER_VISIBILITY_VERTEX; // 頂点シェーダーから見える
-
-	rootSignatureDesc.pParameters = rootparam; // ルートパラメーターの先頭アドレス
-	rootSignatureDesc.NumParameters = 2; // ルートパラメーター数
+	rootSignatureDesc.pParameters = &rootparam; // ルートパラメーターの先頭アドレス
+	rootSignatureDesc.NumParameters = 1; // ルートパラメーター数
 
 	D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
 	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP; // 横方向の繰り返し
@@ -774,13 +769,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 		_cmdList->SetGraphicsRootSignature(rootsignature);
 		_cmdList->SetDescriptorHeaps(1, &basicDescHeap);
-		auto heapHandle = basicDescHeap->GetGPUDescriptorHandleForHeapStart();
-		_cmdList->SetGraphicsRootDescriptorTable(
-			0, // ルートパラメーターインデックス
-			heapHandle); // ヒープアドレス
-		heapHandle.ptr += _dev->GetDescriptorHandleIncrementSize(
-			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-		_cmdList->SetGraphicsRootDescriptorTable(1, heapHandle);
+		_cmdList->SetGraphicsRootDescriptorTable(0,
+			basicDescHeap->GetGPUDescriptorHandleForHeapStart());
 
 		_cmdList->RSSetViewports(1, &viewport);
 		_cmdList->RSSetScissorRects(1, &scissorrect);
