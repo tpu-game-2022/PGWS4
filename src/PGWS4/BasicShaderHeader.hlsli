@@ -2,6 +2,7 @@
 struct Output
 {
 	float4 svpos : SV_POSITION; // システム用頂点座標
+	float4 normal : NORMAL; // 法線ベクトル
 	float2 uv :TEXCOORD; // uv 値
 };
 
@@ -12,11 +13,3 @@ cbuffer cbuff0 : register(b0)
 {
 	matrix mat;
 };
-
-//struct Matrix
-//{
-//	matrix mat;
-//};
-//
-//ConstantBuffer<Matrix> m : register(b0);
-

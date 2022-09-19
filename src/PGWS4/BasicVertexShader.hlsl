@@ -9,6 +9,7 @@ Output BasicVS(
 {
 	Output output;// ピクセルシェーダーに渡す値
 	output.svpos = mul(mat, pos);
+	output.normal = normal;
 	output.uv = uv;
 	return output;
 }
