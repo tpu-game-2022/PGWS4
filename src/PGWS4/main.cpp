@@ -672,16 +672,16 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 
 	// 定数バッファー作成
-	XMMATRIX matrix = XMMatrixRotationY(XM_PIDIV4);
+	XMMATRIX worldMat = XMMatrixRotationY(XM_PIDIV4);
 
 	XMFLOAT3 eye(0, 0, -5);
 	XMFLOAT3 target(0, 0, 0);
 	XMFLOAT3 up(0, 1, 0);
 
-	matrix *= XMMatrixLookAtLH(
+	auto viewMat = XMMatrixLookAtLH(
 		XMLoadFloat3(&eye), XMLoadFloat3(&target), XMLoadFloat3(&up));
 
-	matrix *= XMMatrixPerspectiveFovLH(
+	auto projMat = XMMatrixPerspectiveFovLH(
 		XM_PIDIV2, // 画角は90°
 		static_cast<float>(window_width)
 			/ static_cast<float>(window_height), // アスペクト比
@@ -703,7 +703,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	XMMATRIX* mapMatrix; // マップ先を示すポインター
 	result = constBuff->Map(0, nullptr, (void**)&mapMatrix); // マップ
-	*mapMatrix = matrix; // 行列の内容をコピー
+	*mapMatrix = worldMat * viewMat * projMat; // 行列の内容をコピー
 
 	ID3D12DescriptorHeap* basicDescHeap = nullptr;
 	D3D12_DESCRIPTOR_HEAP_DESC descHeapDesc = {};
@@ -745,6 +745,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// 定数バッファービューの作成
 	_dev->CreateConstantBufferView(&cbvDesc, basicHeapHandle);
 
+	float angle = 0.0f;
 
 	while (true)
 	{
@@ -760,6 +761,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
+
+		angle += 0.1f;
+		worldMat = XMMatrixRotationY(angle);
+		*mapMatrix = worldMat * viewMat * projMat;
 
 		//DirectX処理
 		//バックバッファのインデックスを取得
