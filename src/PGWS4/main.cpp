@@ -241,6 +241,57 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		_dev->CreateRenderTargetView(_backBuffers[idx], &rtvDesc, handle);
 	}
 
+
+	// 深度バッファーの作成
+	D3D12_RESOURCE_DESC depthResDesc = {};
+	depthResDesc.Dimension =
+		D3D12_RESOURCE_DIMENSION_TEXTURE2D; // 2 次元のテクスチャデータ
+	depthResDesc.Width = window_width; // 幅と高さはレンダーターゲットと同じ
+	depthResDesc.Height = window_height; // 同上
+	depthResDesc.DepthOrArraySize = 1; // テクスチャ配列でも、3D テクスチャでもない
+	depthResDesc.Format = DXGI_FORMAT_D32_FLOAT; // 深度値書き込み用フォーマット
+	depthResDesc.SampleDesc.Count = 1; // サンプルは1 ピクセルあたり1 つ
+	depthResDesc.Flags =
+		D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL; // デプスステンシルとして使用
+	
+	// 深度値用ヒーププロパティ
+	D3D12_HEAP_PROPERTIES depthHeapProp = {};
+	depthHeapProp.Type = D3D12_HEAP_TYPE_DEFAULT; // DEFAULT なのであとはUNKNOWN でよい
+	depthHeapProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+	depthHeapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+
+	// このクリアする際の値が重要な意味を持つ
+	D3D12_CLEAR_VALUE depthClearValue = {};
+	depthClearValue.DepthStencil.Depth = 1.0f; // 深さ1.0f（最大値）でクリア
+	depthClearValue.Format = DXGI_FORMAT_D32_FLOAT; // 32 ビットfloat 値としてクリア
+	
+	ID3D12Resource* depthBuffer = nullptr;
+	result = _dev->CreateCommittedResource(
+		&depthHeapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&depthResDesc,
+		D3D12_RESOURCE_STATE_DEPTH_WRITE, // 深度値書き込みに使用
+		&depthClearValue,
+		IID_PPV_ARGS(&depthBuffer));
+
+	// 深度のためのディスクリプタヒープ作成
+	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {}; // 深度に使うことがわかればよい
+	dsvHeapDesc.NumDescriptors = 1; // 深度ビューは1 つ
+	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV; // デプスステンシルビューとして使う
+	ID3D12DescriptorHeap* dsvHeap = nullptr;
+	result = _dev->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&dsvHeap));
+
+	// 深度ビュー作成
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+	dsvDesc.Format = DXGI_FORMAT_D32_FLOAT; // 深度値に32 ビット使用
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D; // 2D テクスチャ
+	dsvDesc.Flags = D3D12_DSV_FLAG_NONE; // フラグは特になし
+
+	_dev->CreateDepthStencilView(
+		depthBuffer,
+		&dsvDesc,
+		dsvHeap->GetCPUDescriptorHandleForHeapStart());
+
 	ID3D12Fence* _fence = nullptr;
 	UINT64 _fenceVal = 0;
 	result = _dev->CreateFence(_fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_fence));
@@ -336,7 +387,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	D3D12_INDEX_BUFFER_VIEW ibView = {};
 	ibView.BufferLocation = idxBuff->GetGPUVirtualAddress();
 	ibView.Format = DXGI_FORMAT_R16_UINT;
-	ibView.SizeInBytes = indices.size() * sizeof(indices[0]);
+	ibView.SizeInBytes = static_cast<UINT>(indices.size() * sizeof(indices[0]));
 
 	fclose(fp);
 
@@ -431,9 +482,17 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	gpipeline.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID; // 中身を塗りつぶす
 	gpipeline.RasterizerState.DepthClipEnable = true; // 深度方向のクリッピングは有効に
 
+	//深度ステンシル
+	gpipeline.DepthStencilState.DepthEnable = true; // 深度バッファーを使う
+	gpipeline.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL; // 書き込む
+	gpipeline.DepthStencilState.DepthFunc =
+		D3D12_COMPARISON_FUNC_LESS; // 小さいほうを採用
+	gpipeline.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+
 	gpipeline.BlendState.AlphaToCoverageEnable = false;
 	gpipeline.BlendState.IndependentBlendEnable = false;
 
+	
 	D3D12_RENDER_TARGET_BLEND_DESC renderTargetBlendDesc = {};
 	//ひとまず加算や乗算やαブレンディングは使用しない
 	renderTargetBlendDesc.BlendEnable = false;
@@ -802,11 +861,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		auto rtvH = rtvHeaps->GetCPUDescriptorHandleForHeapStart();
 		rtvH.ptr += bbIdx * _dev->GetDescriptorHandleIncrementSize(
 			D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-		_cmdList->OMSetRenderTargets(1, &rtvH, true, nullptr);
+		auto dsvH = dsvHeap->GetCPUDescriptorHandleForHeapStart();
+		_cmdList->OMSetRenderTargets(1, &rtvH, true, &dsvH);
 
 		// 画面クリア
 		float clearColor[] = { 1.0f, 1.0f, 1.0f, 1.0f }; // 白色
 		_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
+		_cmdList->ClearDepthStencilView(dsvH, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 		_cmdList->SetGraphicsRootSignature(rootsignature);
 		_cmdList->SetDescriptorHeaps(1, &basicDescHeap);
