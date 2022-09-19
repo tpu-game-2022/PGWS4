@@ -255,10 +255,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	};
 
 	Vertex vertices[] = {
-		{{  0.0f, 100.0f, 0.0f}, {0.0f, 1.0f}}, // 左下
-		{{  0.0f,   0.0f, 0.0f}, {0.0f, 0.0f}}, // 左上
-		{{100.0f, 100.0f, 0.0f}, {1.0f, 1.0f}}, // 右下
-		{{100.0f,   0.0f, 0.0f}, {1.0f, 0.0f}}, // 右上
+		{{-1.0f, -1.0f, 0.0f}, {0.0f, 1.0f}}, // 左下
+		{{-1.0f, +1.0f, 0.0f}, {0.0f, 0.0f}}, // 左上
+		{{+1.0f, -1.0f, 0.0f}, {1.0f, 1.0f}}, // 右下
+		{{+1.0f, +1.0f, 0.0f}, {1.0f, 0.0f}}, // 右上
 	};
 
 	D3D12_HEAP_PROPERTIES heapprop = {};
@@ -672,14 +672,23 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 
 	// 定数バッファー作成
-	XMMATRIX matrix = XMMatrixIdentity();
+	XMMATRIX matrix = XMMatrixRotationY(XM_PIDIV4);
 
-	matrix.r[0].m128_f32[0] = +2.0f / window_width;
-	matrix.r[1].m128_f32[1] = -2.0f / window_height;
+	XMFLOAT3 eye(0, 0, -5);
+	XMFLOAT3 target(0, 0, 0);
+	XMFLOAT3 up(0, 1, 0);
 
-	matrix.r[3].m128_f32[0] = -1.0f;
-	matrix.r[3].m128_f32[1] = +1.0f;
-	
+	matrix *= XMMatrixLookAtLH(
+		XMLoadFloat3(&eye), XMLoadFloat3(&target), XMLoadFloat3(&up));
+
+	matrix *= XMMatrixPerspectiveFovLH(
+		XM_PIDIV2, // 画角は90°
+		static_cast<float>(window_width)
+			/ static_cast<float>(window_height), // アスペクト比
+		1.0f, // 近いほう
+		10.0f // 遠いほう
+	);
+
 	ID3D12Resource* constBuff = nullptr;
 	auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(XMMATRIX) + 0xff) & ~0xff);
