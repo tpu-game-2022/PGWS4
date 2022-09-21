@@ -1,6 +1,8 @@
 # これは何？
 プログラムワークショップ4の管理用
 
+![pgws4sc](https://user-images.githubusercontent.com/71791660/191463566-87d057e0-f5f9-4a1f-a972-65823571543e.jpg)
+
 # 使い方
 
 - 本リポジトリ(tpu-game-2022/PGWS4)をforkしてください。
