@@ -10,3 +10,4 @@
 
 # 締め切り
 次の授業の2日前（水曜日の授業であれば月曜日一杯）
+![0921_aaaaa](https://user-images.githubusercontent.com/71998147/191464528-8433da85-efa2-4c85-bb10-5f3996150de3.png)
