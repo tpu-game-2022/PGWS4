@@ -59,10 +59,10 @@ std::string GetTexturePathFromModelAndTexPath(
 	// ともかく末尾の\ か/ を得られればいいので、双方のrfind を取り比較する
 	// （int 型に代入しているのは、見つからなかった場合は
 	// rfind がepos(-1 → 0xffffffff) を返すため）
-	int pathIndex1 = modelPath.rfind('/');
-	int pathIndex2 = modelPath.rfind('\\');
-	auto pathIndex = max(pathIndex1, pathIndex2);
-	auto folderPath = modelPath.substr(0, pathIndex+1);
+	int pathIndex1 = static_cast<int>(modelPath.rfind('/'));
+	int pathIndex2 = static_cast<int>(modelPath.rfind('\\'));
+	int pathIndex = max(pathIndex1, pathIndex2);
+	string folderPath = modelPath.substr(0, pathIndex+1);
 	return folderPath + texPath;
 }
 
@@ -156,6 +156,56 @@ ID3D12Resource* LoadTextureFromFile(std::string& texPath, ID3D12Device* dev)
 
 	return texbuff;
 }
+
+ID3D12Resource* CreateWhiteTexture(ID3D12Device* dev)
+{
+	D3D12_HEAP_PROPERTIES texHeapProp = {};
+
+	texHeapProp.Type = D3D12_HEAP_TYPE_CUSTOM;
+	texHeapProp.CPUPageProperty =
+		D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
+	texHeapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
+	texHeapProp.CreationNodeMask = 0;
+	texHeapProp.VisibleNodeMask = 0;
+	
+	D3D12_RESOURCE_DESC resDesc = {};
+	resDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	resDesc.Width = 4; // 幅
+	resDesc.Height = 4; // 高さ
+	resDesc.DepthOrArraySize = 1;
+	resDesc.SampleDesc.Count = 1;
+	resDesc.SampleDesc.Quality = 0;
+	resDesc.MipLevels = 1;
+	resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	resDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	resDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+	
+	ID3D12Resource* whiteBuff = nullptr;
+	auto result = dev->CreateCommittedResource(
+		&texHeapProp,
+		D3D12_HEAP_FLAG_NONE, // 特に指定なし
+		&resDesc,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		nullptr,
+		IID_PPV_ARGS(&whiteBuff)
+	);
+	if (FAILED(result)) { return nullptr; }
+
+	std::vector<unsigned char> data(4 * 4 * 4);
+	std::fill(data.begin(), data.end(), 0xff); // 全部255 で埋める
+
+	// データ転送
+	result = whiteBuff->WriteToSubresource(
+		0,
+		nullptr,
+		data.data(),
+		4 * 4,
+		static_cast<UINT>(data.size()));
+
+	return whiteBuff;
+}
+
+
 // アライメントにそろえたサイズを返す
 // @param size 元のサイズ
 // @param alignment アライメントサイズ
@@ -408,6 +458,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// ウィンドウ表示
 	ShowWindow(hwnd, SW_SHOW);
 
+	ID3D12Resource* whiteTex = CreateWhiteTexture(_dev);
+
 	// PMD ヘッダー構造体
 	struct PMDHeader
 	{
@@ -655,16 +707,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		matDescHeapH.ptr += inc;
 		matCBVDesc.BufferLocation += materialBuffSize;
 
-		// シェーダーリソースビュー（ここからが追加部分）
-		if (textureResources[i] != nullptr)
+		if (textureResources[i] == nullptr)
+		{
+			srvDesc.Format = whiteTex->GetDesc().Format;
+			_dev->CreateShaderResourceView(
+				whiteTex, &srvDesc, matDescHeapH);
+		}
+		else
 		{
 			srvDesc.Format = textureResources[i]->GetDesc().Format;
+			_dev->CreateShaderResourceView(
+				textureResources[i],
+				&srvDesc,
+				matDescHeapH);
 		}
-
-		_dev->CreateShaderResourceView(
-			textureResources[i],
-			&srvDesc,
-			matDescHeapH);
 
 		matDescHeapH.ptr += inc;
 	}
