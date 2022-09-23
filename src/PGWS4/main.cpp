@@ -66,6 +66,31 @@ std::string GetTexturePathFromModelAndTexPath(
 	return folderPath + texPath;
 }
 
+// ファイル名から拡張子を取得する
+// @param path 対象のパス文字列
+// @return 拡張子
+std::string GetExtension(const std::string& path)
+{
+	int idx = static_cast<int>(path.rfind('.'));
+	return path.substr(
+		idx + 1, path.length() - idx - 1);
+}
+
+// テクスチャのパスをセパレーター文字で分離する
+// @param path 対象のパス文字列
+// @param splitter 区切り文字
+// @return 分離前後の文字列ペア
+std::pair<std::string, std::string> SplitFileName(
+	const std::string& path, const char splitter = '*')
+{
+	int idx = static_cast<int>(path.find(splitter));
+	pair<std::string, std::string> ret;
+	ret.first = path.substr(0, idx);
+	ret.second = path.substr(
+		idx + 1, path.length() - idx - 1);
+	return ret;
+}
+
 // std::string（マルチバイト文字列）からstd::wstring（ワイド文字列）を得る
 // @param str マルチバイト文字列
 // @return 変換されたワイド文字列
@@ -470,7 +495,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	char signature[3] = {}; // シグネチャ
 	PMDHeader pmdheader = {};
-	std::string strModelPath = "Model/初音ミク.pmd";
+//	std::string strModelPath = "Model/初音ミク.pmd";
+//	std::string strModelPath = "Model/巡音ルカ.pmd";
+	std::string strModelPath = "Model/初音ミクmetal.pmd";
 	FILE* fp;
 	fopen_s(&fp, strModelPath.c_str(), "rb");
 
@@ -623,17 +650,49 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	}
 
 	vector<ID3D12Resource*> textureResources(materialNum);
+	vector<ID3D12Resource*> sphResources(materialNum, nullptr);
 	for (int i = 0; i < pmdMaterials.size(); ++i)
 	{
 		if (strlen(pmdMaterials[i].texFilePath) == 0)
 		{
 			textureResources[i] = nullptr;
+			continue;
 		}
+
+		std::string texFileName = pmdMaterials[i].texFilePath;
+		std::string sphFileName = "";
+
+		if (std::count(texFileName.begin(), texFileName.end(), '*') > 0)
+		{ // スプリッタがある
+			auto namepair = SplitFileName(texFileName);
+			if (GetExtension(namepair.first) == "sph" ||
+				GetExtension(namepair.first) == "spa")
+			{
+				texFileName = namepair.second;
+				sphFileName = namepair.first;
+			}
+			else
+			{
+				texFileName = namepair.first;
+				sphFileName = namepair.second;
+			}
+		}
+		else {
+			if (GetExtension(pmdMaterials[i].texFilePath) == "sph") {
+				sphFileName = pmdMaterials[i].texFilePath;
+				texFileName = "";
+			}
+		}
+
 		// モデルとテクスチャパスからアプリケーションからのテクスチャパスを得る
 		auto texFilePath = GetTexturePathFromModelAndTexPath(
-			strModelPath,
-			pmdMaterials[i].texFilePath);
+			strModelPath, texFileName.c_str());
 		textureResources[i] = LoadTextureFromFile(texFilePath, _dev);
+
+		if (sphFileName != "") {
+			auto sphFilePath = GetTexturePathFromModelAndTexPath(strModelPath, sphFileName.c_str());
+			sphResources[i] = LoadTextureFromFile(sphFilePath, _dev);
+		}
 	}
 
 	// マテリアルバッファーを作成
@@ -670,7 +729,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	materialDescHeapDesc.Flags =
 		D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	materialDescHeapDesc.NodeMask = 0;
-	materialDescHeapDesc.NumDescriptors = materialNum * 2; // マテリアル数x2
+	materialDescHeapDesc.NumDescriptors = materialNum * 3; // マテリアル数分（2 → 3）
 	materialDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 
 	result = _dev->CreateDescriptorHeap(
@@ -696,15 +755,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// 先頭を記録
 	auto matDescHeapH =
 		materialDescHeap->GetCPUDescriptorHandleForHeapStart();
-	UINT inc = _dev->GetDescriptorHandleIncrementSize(
+	UINT incSize = _dev->GetDescriptorHandleIncrementSize(
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	for (UINT i = 0; i < materialNum; ++i)
 	{
 		// マテリアル用定数バッファービュー
 		_dev->CreateConstantBufferView(&matCBVDesc, matDescHeapH);
-
-		matDescHeapH.ptr += inc;
+		matDescHeapH.ptr += incSize;
 		matCBVDesc.BufferLocation += materialBuffSize;
 
 		if (textureResources[i] == nullptr)
@@ -722,7 +780,21 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 				matDescHeapH);
 		}
 
-		matDescHeapH.ptr += inc;
+		matDescHeapH.ptr += incSize;
+
+		if (sphResources[i] == nullptr)
+		{
+			srvDesc.Format = whiteTex->GetDesc().Format;
+			_dev->CreateShaderResourceView(
+				whiteTex, &srvDesc, matDescHeapH);
+		}
+		else
+		{
+			srvDesc.Format = sphResources[i]->GetDesc().Format;
+			_dev->CreateShaderResourceView(
+				sphResources[i], &srvDesc, matDescHeapH);
+		}
+		matDescHeapH.ptr += incSize;
 	}
 
 	fclose(fp);
@@ -856,23 +928,23 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	D3D12_DESCRIPTOR_RANGE descTblRange[3] = {};// テクスチャと定数の2つ
 
-	// 定数用レジスター0 番
-	descTblRange[0].NumDescriptors = 1; // 定数1 つ
+	// 定数用レジスター0番
+	descTblRange[0].NumDescriptors = 1; // 定数1つ
 	descTblRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV; // 種別は定数
-	descTblRange[0].BaseShaderRegister = 0; // 0 番スロットから
+	descTblRange[0].BaseShaderRegister = 0; // 0番スロットから
 	descTblRange[0].OffsetInDescriptorsFromTableStart =
 		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	// 定数用レジスター1 番
+	// 定数用レジスター1番
 	descTblRange[1].NumDescriptors = 1; // ディスクリプタヒープは複数だが
 										// 一度に使うのは1つ
 	descTblRange[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV; // 種別は定数
-	descTblRange[1].BaseShaderRegister = 1; // 1 番スロットから
+	descTblRange[1].BaseShaderRegister = 1; // 1番スロットから
 	descTblRange[1].OffsetInDescriptorsFromTableStart =
 		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	// テクスチャ1 つ目（マテリアルとペア）
-	descTblRange[2].NumDescriptors = 1; // テクスチャ1 つ
+	// テクスチャ1つ目（マテリアルとペア）
+	descTblRange[2].NumDescriptors = 2; // テクスチャ2つ（基本とsph）
 	descTblRange[2].RangeType =
 		D3D12_DESCRIPTOR_RANGE_TYPE_SRV; // 種別はテクスチャ
 	descTblRange[2].BaseShaderRegister = 0; // 0 番スロットから
@@ -1234,7 +1306,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		unsigned int idxOffset = 0; // 最初はオフセットなし
 
 		UINT cbvsrvIncSize = _dev->GetDescriptorHandleIncrementSize(
-			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 2; // 2 倍
+			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 3; // ここ
 
 		for (Material& m : materials)
 		{
