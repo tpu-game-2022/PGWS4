@@ -1006,11 +1006,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		_cmdList->SetGraphicsRootDescriptorTable(0,
 			basicDescHeap->GetGPUDescriptorHandleForHeapStart());
 
-		_cmdList->SetDescriptorHeaps(1, &materialDescHeap);
-		_cmdList->SetGraphicsRootDescriptorTable(
-			1,
-			materialDescHeap->GetGPUDescriptorHandleForHeapStart());
-
 		_cmdList->RSSetViewports(1, &viewport);
 		_cmdList->RSSetScissorRects(1, &scissorrect);
 
@@ -1019,7 +1014,26 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		_cmdList->IASetVertexBuffers(0, 1, &vbView);
 		_cmdList->IASetIndexBuffer(&ibView);
 
-		_cmdList->DrawIndexedInstanced(indicesNum, 1, 0, 0, 0);
+		_cmdList->SetDescriptorHeaps(1, &materialDescHeap);
+		auto materialH = materialDescHeap->
+			GetGPUDescriptorHandleForHeapStart(); // ヒープ先頭
+
+		unsigned int idxOffset = 0; // 最初はオフセットなし
+
+		for (auto& m : materials)
+		{
+			_cmdList->SetGraphicsRootDescriptorTable(1, materialH);
+
+			_cmdList->DrawIndexedInstanced(
+				m.indicesNum, 1, idxOffset, 0, 0);
+
+			// ヒープポインターとインデックスを次に進める
+			materialH.ptr +=
+				_dev->GetDescriptorHandleIncrementSize(
+					D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+			idxOffset += m.indicesNum;
+		}
 
 		// 前後だけ入れ替える
 		BarrierDesc = CD3DX12_RESOURCE_BARRIER::Transition(
