@@ -419,9 +419,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	DXGI_SWAP_CHAIN_DESC swcDesc = {};
 	result = _swapchain->GetDesc(&swcDesc);
 
-	// SRGB レンダーターゲットビュー設定
+	// レンダーターゲットビュー設定
 	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
-	rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; // ガンマ補正あり（sRGB）
+	rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // ガンマ補正なし
 	rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
 	std::vector<ID3D12Resource*> _backBuffers(swcDesc.BufferCount);
@@ -507,8 +507,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	char signature[3] = {}; // シグネチャ
 	PMDHeader pmdheader = {};
 //	std::string strModelPath = "Model/初音ミク.pmd";
-	std::string strModelPath = "Model/巡音ルカ.pmd";
-//	std::string strModelPath = "Model/初音ミクmetal.pmd";
+//	std::string strModelPath = "Model/巡音ルカ.pmd";
+	std::string strModelPath = "Model/初音ミクmetal.pmd";
 	FILE* fp;
 	fopen_s(&fp, strModelPath.c_str(), "rb");
 
@@ -960,7 +960,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	gpipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;// 点で構成
 
 	gpipeline.NumRenderTargets = 1;//今は１つのみ
-	gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;//0～1に正規化されたRGBA
+	gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;//0～1に正規化されたRGBA
 
 	gpipeline.SampleDesc.Count = 1;//サンプリングは1ピクセルにつき１
 	gpipeline.SampleDesc.Quality = 0;//クオリティは最低
@@ -1218,12 +1218,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	_cmdList->Reset(_cmdAllocator, nullptr);
 
 
-	// シェーダー側に渡すための基本的な行列データ
-	struct MatricesData
+	// シェーダー側に渡すための基本的な環境データ
+	struct SceneData
 	{
 		XMMATRIX world; // ワールド行列
 		XMMATRIX view; // ビュー行列
 		XMMATRIX proj; // プロジェクション行列
+		XMFLOAT3 eye; // 視点座標
 	};
 
 	// 定数バッファー作成
@@ -1246,7 +1247,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	ID3D12Resource* constBuff = nullptr;
 	auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-	resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(MatricesData) + 0xff) & ~0xff);
+	resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(SceneData) + 0xff) & ~0xff);
 	_dev->CreateCommittedResource(
 		&heapProp,
 		D3D12_HEAP_FLAG_NONE,
@@ -1256,11 +1257,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		IID_PPV_ARGS(&constBuff)
 	);
 
-	MatricesData* mapMatrix; // マップ先を示すポインター
-	result = constBuff->Map(0, nullptr, (void**)&mapMatrix); // マップ
-	mapMatrix->world = worldMat;
-	mapMatrix->view = viewMat;
-	mapMatrix->proj = projMat;
+	SceneData* mapScene; // マップ先を示すポインター
+	result = constBuff->Map(0, nullptr, (void**)&mapScene); // マップ
+	mapScene->world = worldMat;
+	mapScene->view = viewMat;
+	mapScene->proj = projMat;
+	mapScene->eye = eye;
 
 	ID3D12DescriptorHeap* basicDescHeap = nullptr;
 	D3D12_DESCRIPTOR_HEAP_DESC descHeapDesc = {};
@@ -1304,9 +1306,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 		angle += 0.1f;
 		worldMat = XMMatrixRotationY(angle);
-		mapMatrix->world = worldMat;
-		mapMatrix->view = viewMat;
-		mapMatrix->proj = projMat;
+		mapScene->world = worldMat;
+		mapScene->view = viewMat;
+		mapScene->proj = projMat;
 
 		//DirectX処理
 		//バックバッファのインデックスを取得
