@@ -1,2 +1,3 @@
-﻿  LINK : 前回のインクリメンタル リンクで C:\Users\yukit\OneDrive\デスクトップ\授業関連\3\プログラムワークショップⅣ\repos\PGWS4_001\Debug\PGWS4_001.exe が見つからなかったか、ビルドされませんでした。フル リンクを行います。
+﻿  main.cpp
+C:\Users\yukit\OneDrive\デスクトップ\授業関連\3\プログラムワークショップⅣ\repos\PGWS4_001\PGWS4_001\main.cpp(172,23): warning C4018: '<': signed と unsigned の数値を比較しようとしました。
   PGWS4_001.vcxproj -> C:\Users\yukit\OneDrive\デスクトップ\授業関連\3\プログラムワークショップⅣ\repos\PGWS4_001\Debug\PGWS4_001.exe

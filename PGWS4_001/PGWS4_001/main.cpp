@@ -2,15 +2,26 @@
 #include <tchar.h>
 #include <d3d12.h>
 #include <dxgi1_6.h>
+#include <DirectXMath.h>
 #include <vector>
+#include <d3dcompiler.h>
 #ifdef _DEBUG
 #include <iostream>
 #endif
 
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")
+#pragma comment(lib,"d3dcompiler.lib")
 
 using namespace std;
+using namespace DirectX;
+
+bool redChange = false;
+bool greenChange = false;
+bool blueChange = false;
+float r = 1.0f;
+float g = 0.5f;
+float b = 0.0f;
 
 void DebugOutputFormatString(const char* format, ...)
 {
@@ -166,7 +177,6 @@ for (int idx = 0; idx < swcDesc.BufferCount; ++idx)
 	_dev->CreateRenderTargetView(_backBuffers[idx], nullptr, handle);
 }
 
-
 ID3D12Fence* _fence = nullptr;
 UINT64 _fenceVal = 0;
 result = _dev->CreateFence(_fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_fence));
@@ -174,13 +184,89 @@ result = _dev->CreateFence(_fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_fenc
 
 ShowWindow(hwnd, SW_SHOW);
 
+XMFLOAT3 vertices[] = {
+	{-1.0f,-1.0f,0.0f},
+	{-1.0f,+1.0f,0.0f},
+	{+1.0f,-1.0f,0.0f},
+};
+
+D3D12_HEAP_PROPERTIES heapprop = {};
+heapprop.Type = D3D12_HEAP_TYPE_UPLOAD;
+heapprop.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+heapprop.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+
+D3D12_RESOURCE_DESC resdesc = {};
+resdesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+resdesc.Width = sizeof(vertices);
+resdesc.Height = 1;
+resdesc.DepthOrArraySize = 1;
+resdesc.MipLevels = 1;
+resdesc.Format = DXGI_FORMAT_UNKNOWN;
+resdesc.SampleDesc.Count = 1;
+resdesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+resdesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+ID3D12Resource* vertBuff = nullptr;
+
+result = _dev->CreateCommittedResource(&heapprop, D3D12_HEAP_FLAG_NONE, &resdesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&vertBuff));
+
+XMFLOAT3* vertMap = nullptr;
+result = vertBuff->Map(0, nullptr, (void**)&vertMap);
+std::copy(std::begin(vertices), std::end(vertices), vertMap);
+vertBuff->Unmap(0, nullptr);
+
+D3D12_VERTEX_BUFFER_VIEW vbView = {};
+vbView.BufferLocation = vertBuff->GetGPUVirtualAddress();
+vbView.SizeInBytes = sizeof(vertices);
+vbView.StrideInBytes = sizeof(vertices[0]);
+
+ID3DBlob* _vsBlob = nullptr;
+ID3DBlob* _psBlob = nullptr;
+
+ID3DBlob* errorBlob = nullptr;
+result = D3DCompileFromFile(L"BasicVertexShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "BasicVS", "vs_5_0", D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0, &_vsBlob, &errorBlob);
+if (FAILED(result))
+{
+	if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+	{
+		::OutputDebugStringA("ファイルが見当たりません");
+	}
+	else
+	{
+		std::string errstr;
+		errstr.resize(errorBlob->GetBufferSize());
+		std::copy_n((char*)errorBlob->GetBufferPointer(), errorBlob->GetBufferSize(), errstr.begin());
+		errstr += "\n";
+		OutputDebugStringA(errstr.c_str());
+	}
+	exit(1);
+}
+
+result = D3DCompileFromFile(L"BasicPixelShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "BasicPS", "ps_5_0", D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0, &_psBlob, &errorBlob);
+if (FAILED(result))
+{
+	if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+	{
+		::OutputDebugStringA("ファイルが見当たりません");
+	}
+	else
+	{
+		std::string errstr;
+		errstr.resize(errorBlob->GetBufferSize());
+		std::copy_n((char*)errorBlob->GetBufferPointer(), errorBlob->GetBufferSize(), errstr.begin());
+		errstr += "\n";
+		OutputDebugStringA(errstr.c_str());
+	}
+	exit(1);
+}
+
+D3D12_INPUT_ELEMENT_DESC inputLayout[] =
+{
+	{"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT,0,D3D12_APPEND_ALIGNED_ELEMENT,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
+};
 
 while (true)
 {
-	float r = 1;
-	float g = 1;
-	float b = 0;
-
 	MSG msg;
 	if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
 	{
@@ -210,6 +296,40 @@ while (true)
 
 	float clearColor[] = { r,g,b,1.0f };
 	_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
+	
+	//true= up / false = down
+	if (r <= 0)
+		redChange = true;
+	else if (r >= 1)
+		redChange = false;
+
+	if (redChange)
+		r += 0.01f;
+	else if (!redChange)
+		r -= 0.01f;
+
+
+	if (g <= 0)
+		greenChange = true;
+	else if (g >= 1)
+		greenChange = false;
+
+	if (greenChange)
+		g += 0.01f;
+	else if (!greenChange)
+		g -= 0.01f;
+
+
+	if (b <= 0)
+		blueChange = true;
+	else if (b >= 1)
+		blueChange = false;
+
+	if (blueChange)
+		b += 0.01f;
+	else if (!blueChange)
+		b -= 0.01f;
+
 
 	BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
@@ -236,8 +356,34 @@ while (true)
 	_swapchain->Present(1, 0);
 }
 
-
 UnregisterClass(w.lpszClassName, w.hInstance);
 
 return 0;
 }
+
+/*if (g >= 0)
+	{
+		r -= 0.01f;
+	}
+	else if (g <= 1)
+	{
+		r += 0.01f;
+	}
+
+	if (b >= 0)
+	{
+		g -= 0.01f;
+	}
+	else if (b <= 1)
+	{
+		g += 0.01f;
+	}
+
+	if (r >= 0)
+	{
+		b -= 0.01f;
+	}
+	else if (r <= 1)
+	{
+		b += 0.01f;
+	}*/
