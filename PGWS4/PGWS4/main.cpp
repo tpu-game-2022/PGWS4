@@ -2,7 +2,9 @@
 #include<tchar.h>
 #include<d3d12.h>
 #include<dxgi1_6.h>
+#include<DirectXMath.h>
 #include<vector>
+#include<d3dcompiler.h>
 #ifdef _DEBUG
 #include<iostream>
 #endif
@@ -10,8 +12,12 @@
 
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")
+#pragma comment(lib,"d3dcompiler.lib")
 
 using namespace std;
+using namespace DirectX;
+
+XMFLOAT3 vertices[3]; // 3 頂点
 
 void DebugOutFormatString(const char* format, ...)
 {
@@ -33,6 +39,19 @@ LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 
 }
+
+#ifdef _DEBUG
+void EnableDebugLayer()
+{
+	ID3D12Debug* debugLayer = nullptr;
+	HRESULT result = D3D12GetDebugInterface(IID_PPV_ARGS(&debugLayer));
+	if (!SUCCEEDED(result))return;
+
+	debugLayer->EnableDebugLayer();
+	debugLayer->Release();
+}
+#endif // DEBUG
+
 
 #ifdef _DEBUG
 
@@ -88,6 +107,11 @@ int main()
 		 void** ppDevice
 	 );*/
 
+#ifdef _DEBUG
+	 //デバックレイヤーをオンに
+	 EnableDebugLayer();
+#endif // DEBUG
+
 	 D3D_FEATURE_LEVEL levels[] = {
 		 D3D_FEATURE_LEVEL_12_1,
 		 D3D_FEATURE_LEVEL_12_0,
@@ -95,7 +119,11 @@ int main()
 		 D3D_FEATURE_LEVEL_11_0,
 	 };
 
+#ifdef _DEBUG
+	 auto result = CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG,IID_PPV_ARGS(&_dxgiFactory));
+#else
 	 auto result = CreateDXGIFactory(IID_PPV_ARGS(&_dxgiFactory));
+#endif // _DEBUG
 
 	 std::vector<IDXGIAdapter*>adapters;
 
@@ -198,7 +226,117 @@ int main()
 		 _dev->CreateRenderTargetView(_backBuffers[idx], nullptr, handle);
 	 }
 
+	 ID3D12Fence* _fence = nullptr;
+	 UINT64 _fenceVal = 0;
+	 result = _dev->CreateFence(_fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_fence));
+
 	 ShowWindow(hwnd, SW_SHOW);
+
+	 XMFLOAT3 vertices[] = {
+		 {-1.0f,-1.0f,0.0f},//左下
+		 {-1.0f,+1.0f,0.0f},//左上
+		 {+1.0f,-1.0f,0.0f},//右下
+	 };
+
+	 D3D12_HEAP_PROPERTIES heapprop = {};
+	 heapprop.Type = D3D12_HEAP_TYPE_UPLOAD;
+	 heapprop.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+	 heapprop.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+
+	 D3D12_RESOURCE_DESC resdesc = {};
+	 resdesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	 resdesc.Width = sizeof(vertices);
+	 resdesc.Height = 1;
+	 resdesc.DepthOrArraySize = 1;
+	 resdesc.MipLevels = 1;
+	 resdesc.Format = DXGI_FORMAT_UNKNOWN;
+	 resdesc.SampleDesc.Count = 1;
+	 resdesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+	 resdesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+	 ID3D12Resource* vertBuff = nullptr;
+
+	 result = _dev->CreateCommittedResource(
+		 &heapprop,
+		 D3D12_HEAP_FLAG_NONE,
+		 &resdesc,
+		 D3D12_RESOURCE_STATE_GENERIC_READ,
+		 nullptr,
+		 IID_PPV_ARGS(&vertBuff));
+
+	 XMFLOAT3* vertMap = nullptr;
+	 result = vertBuff->Map(0, nullptr, (void**)&vertMap);
+	 std::copy(std::begin(vertices), std::end(vertices), vertMap);
+	 vertBuff->Unmap(0, nullptr);
+
+	 D3D12_VERTEX_BUFFER_VIEW vbView = {};
+	 vbView.BufferLocation = vertBuff->GetGPUVirtualAddress();//バッファーの仮想アドレス
+	 vbView.SizeInBytes = sizeof(vertices);//全バイト数
+	 vbView.StrideInBytes = sizeof(vertices[0]);//１頂点あたりのバイト数
+
+	 ID3DBlob* _vsBlob = nullptr;
+	 ID3DBlob* _psBlob = nullptr;
+
+	 //頂点シェーダのコンパイルコード
+	 ID3DBlob* errorBlob = nullptr;
+	 result = D3DCompileFromFile(
+		 L"BasicVertexShader.hlsl",
+		 nullptr,
+		 D3D_COMPILE_STANDARD_FILE_INCLUDE,
+		 "BasicVS", "vs_5_0",
+		 D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
+		 0,
+		 &_vsBlob, &errorBlob);
+	 if (FAILED(result))
+	 {
+		 if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)) {
+			 ::OutputDebugStringA("ファイルが見つかりません");
+		 }//デバックウインドウへのエラー表示
+		 else
+		 {
+			 std::string errstr;
+			 errstr.resize(errorBlob->GetBufferSize());
+			 std::copy_n((char*)errorBlob->GetBufferPointer(),
+				 errorBlob->GetBufferSize(), errstr.begin());
+			 errstr += "\n";
+			 OutputDebugStringA(errstr.c_str());
+		 }
+		 exit(1);//行儀悪いかな？
+	 }
+	 //ピクセルシェーダのコンパイルコード
+	 result = D3DCompileFromFile(
+		 L"BasicPixelShader.hlsl",
+		 nullptr,
+		 D3D_COMPILE_STANDARD_FILE_INCLUDE,
+		 "BasicPS", "ps_5_0",
+		 D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
+		 0,
+		 &_psBlob, &errorBlob);
+	 if (FAILED(result))
+	 {
+		 if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)) {
+			 ::OutputDebugStringA("ファイルが見つかりません");
+		 }//デバックウインドウへのエラー表示
+		 else
+		 {
+			 std::string errstr;
+			 errstr.resize(errorBlob->GetBufferSize());
+			 std::copy_n((char*)errorBlob->GetBufferPointer(),
+				 errorBlob->GetBufferSize(), errstr.begin());
+			 errstr += "\n";
+			 OutputDebugStringA(errstr.c_str());
+		 }
+		 exit(1);//行儀悪いかな？
+	 }
+
+	 D3D12_INPUT_ELEMENT_DESC inputLayout[] =
+	 {
+		 {"POSITION",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,
+		 D3D12_APPEND_ALIGNED_ELEMENT,
+		 D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
+	 };
+
+	 int color_number = 0;
 
 	 /*MSG msg = {};*/
 	 while (true)
@@ -216,19 +354,81 @@ int main()
 
 		 auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
 
+		 D3D12_RESOURCE_BARRIER BarrierDesc = {};
+		 BarrierDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		 BarrierDesc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		 BarrierDesc.Transition.pResource = _backBuffers[bbIdx];
+		 BarrierDesc.Transition.Subresource = 0;
+		 BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+		 BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		 _cmdList->ResourceBarrier(1, &BarrierDesc);
+
 		 auto rtvH = rtvHeaps->GetCPUDescriptorHandleForHeapStart();
 		 rtvH.ptr += bbIdx * _dev->GetDescriptorHandleIncrementSize(
 			 D3D12_DESCRIPTOR_HEAP_TYPE_RTV
 		 );
 		 _cmdList->OMSetRenderTargets(1, &rtvH, true, nullptr);
 
-		 float clearColor[] = { 1.0f,1.0f, 0.0f, 1.0f };//黄色
+		 float clearColor[] = { 0.0f,0.0f, 0.0f, 0.0f };//透明
+
+		 //チカチカ
+		 if (color_number >= 0&& color_number < 10 ) {
+			 //clearColor[] = { 1.0f,0.0f, 0.0f, 1.0f};//赤
+			 clearColor[0] = { 1.0f};
+			 clearColor[1] = { 0.0f};
+			 clearColor[2] = { 0.0f};
+			 clearColor[3] = { 1.0f};
+			 color_number++;
+		 }
+		 else if (color_number >= 10 && color_number < 20) {
+			 //float clearColor[] = { 1.0f,1.0f, 0.0f, 1.0f };//黄色
+			 clearColor[0] = { 1.0f };
+			 clearColor[1] = { 1.0f };
+			 clearColor[2] = { 0.0f };
+			 clearColor[3] = { 1.0f };
+			 color_number++;
+		 }
+		 else if (color_number >= 20 && color_number < 30) {
+			 //float clearColor[] = { 0.0f,0.0f, 1.0f, 1.0f };//青
+			 clearColor[0] = { 0.0f };
+			 clearColor[1] = { 0.0f };
+			 clearColor[2] = { 1.0f };
+			 clearColor[3] = { 1.0f };
+			 color_number++;
+		 }
+		 else if (color_number >= 30 && color_number < 40) {
+			 //float clearColor[] = { 0.0f,1.0f, 1.0f, 1.0f };//緑
+			 clearColor[0] = { 0.0f };
+			 clearColor[1] = { 1.0f };
+			 clearColor[2] = { 1.0f };
+			 clearColor[3] = { 1.0f };
+			 color_number++;
+		 }
+		 else if (color_number >= 40) {
+			 color_number = 0;
+		 }
 		 _cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
+
+
+		 BarrierDesc.Transition.StateBefore= D3D12_RESOURCE_STATE_RENDER_TARGET;
+		 BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+		 _cmdList->ResourceBarrier(1, &BarrierDesc);
+
 
 		 _cmdList->Close();
 
 		 ID3D12CommandList* cmdlists[] = { _cmdList };
 		 _cmdQueue->ExecuteCommandLists(1, cmdlists);
+		 
+		 _cmdQueue->Signal(_fence, ++_fenceVal);
+
+		 if (_fence->GetCompletedValue() != _fenceVal) {
+			 auto event = CreateEvent(nullptr, false,false, nullptr);
+			 _fence->SetEventOnCompletion(_fenceVal, event);
+			 WaitForSingleObject(event, INFINITE);
+			 CloseHandle(event);
+		 }
+
 
 		 _cmdAllocator->Reset();
 		 _cmdList->Reset(_cmdAllocator, nullptr);
