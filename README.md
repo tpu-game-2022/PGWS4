@@ -14,3 +14,4 @@
 # 第２回課題 結果画像
 
 ![DX12テスト 2022_09_21 18_26_41](https://user-images.githubusercontent.com/71632844/191471427-69ccb5ba-d115-4089-bd26-e2fc06bde026.png)
+
