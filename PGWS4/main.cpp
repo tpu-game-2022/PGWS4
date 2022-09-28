@@ -17,6 +17,10 @@
 using namespace std;
 using namespace DirectX;
 
+const int numberOfColors = 3;
+float color[numberOfColors] = { 1.0f,1.0f,0.0f };
+bool colorFlag = false;
+
 void DebugOutputFormatString(const char* format, ...)
 {
 #ifdef _DEBUG
@@ -337,7 +341,31 @@ while (true)
 		D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	_cmdList->OMSetRenderTargets(1, &rtvH, true, nullptr);
 
-	float clearColor[] = { 1.0f,1.0f,0.0f,1.0f };
+	//float clearColor[] = { 1.0f,1.0f,0.0f,1.0f };
+
+	float clearColor[] = { color[0],color[1],color[2],1.0f };
+
+	if (!colorFlag)
+	{
+		color[0] -= 0.01f;
+		color[1] -= 0.01f;
+		color[2] += 0.01f;
+	}
+	else
+	{
+		color[0] += 0.01f;
+		color[1] += 0.01f;
+		color[2] -= 0.01f;
+	}
+
+	if (color[0] <= 0.0f)
+	{
+		colorFlag = true;
+	}
+	else if (color[0] >= 1.0f)
+	{
+		colorFlag = false;
+	}
 
 	_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
 
