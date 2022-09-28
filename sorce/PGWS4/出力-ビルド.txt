@@ -1,0 +1,7 @@
+ビルドを開始しました...
+1>------ ビルド開始: プロジェクト: PGWS4, 構成: Debug x64 ------
+1>C:\Users\keshi\source\repos\DirectX\PGWS4\PGWS4\BasicPixelShader.hlsl(1,1): error X3000: Illegal character in shader file
+1>
+1>compilation failed; no code produced
+1>プロジェクト "PGWS4.vcxproj" のビルドが終了しました -- 失敗。
+========== ビルド: 0 正常終了、1 失敗、0 更新不要、0 スキップ ==========

@@ -7,14 +7,21 @@
 #include<dxgi1_6.h>
 //アダプター検索に必要
 #include<vector>
+//-------------------------------------------------------
+//ポリゴン表示に使う
+#include<DirectXMath.h>
+//HLSL用
+#include<d3dcompiler.h>
 #ifdef _DEBUG
 #include<iostream>
 #endif
 
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")
+#pragma comment(lib,"d3dcompiler.lib")
 
 using namespace std;
+using namespace DirectX;
 
 //@brief コンソール画面にフォーマット付き文字列を表示
 //@param format フォーマット(%d、%f等)
@@ -46,9 +53,66 @@ LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 }
 
 #ifdef _DEBUG
+void EnableDebugLayer()
+{
+	ID3D12Debug* debugLayer = nullptr;
+	HRESULT result = D3D12GetDebugInterface(IID_PPV_ARGS(&debugLayer));
+	if (!SUCCEEDED(result)) return;
+
+	//デバッグレイヤーを有効にする
+	debugLayer->EnableDebugLayer();
+	//有効かしたらインターフェイスを解放する
+	debugLayer->Release();
+}
+#endif// _DEBUG
+
+
+//グラデーション用
+void ColorChange(float* r, float* g, float* b)
+{
+	//赤色
+	if (*r < 1.0f && *g < 1.0f && *b < 1.0f)
+	{
+		*r += 0.01f;
+	}
+	//黄色
+	if(*r >= 1.0f  && *g < 1.0f)
+	{
+		*g += 0.01f;
+	}
+	//緑
+	if (*r >= 0.0f && *g >= 1.0f)
+	{
+		*r -= 0.01f;
+	}
+	//水色
+	if (*g >= 1.0f && *b < 1.0f && *r < 0.0f)
+	{
+		*b += 0.01f;
+	}
+	//青色
+	if (*b >= 1.0f && *r < 0.0f && *g >= 0.0f)
+	{
+		*g -= 0.01f;
+	}
+	//紫
+	if (*b >= 1.0f && *r < 1.0f && *g < 0.0f)
+	{
+		*r += 0.01f;
+	}
+	//黒
+
+}
+
+#ifdef _DEBUG
 //コマンドライン出力で情報を表示できるようにデバッグ時はmainを使用
 int main()
 {
+#ifdef _DEBUG
+	//デッバグレイヤーをオン
+	EnableDebugLayer();
+#endif // _DEBUG
+
 #else
 int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR,int)
 {
@@ -129,8 +193,13 @@ int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR,int)
 		D3D_FEATURE_LEVEL_11_0,
 	};
 
-	//アダプターの列挙と検索-------------------------------------------------
+#ifdef _DEBUG
+	auto result = CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(&_dxgiFactory));
+#else
 	auto result = CreateDXGIFactory1(IID_PPV_ARGS(&_dxgiFactory));
+#endif // _DEBUG
+
+	//アダプターの列挙と検索-------------------------------------------------
 	//アダプター列挙用
 	vector<IDXGIAdapter*> adapters;
 	//ここに特定の名前を持つアダプターオブジェクトが入る
@@ -215,7 +284,7 @@ int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR,int)
 		&swapchainDesc, nullptr, nullptr,
 		(IDXGISwapChain1**)&_swapchain);
 
-	//スワップチェーンのバッファを取得------------------------------------
+	//スワップチェーンのバッファを取得---------------------------------
 	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
 	//レンダーターゲットビューなのでRTV
 	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
@@ -232,7 +301,7 @@ int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR,int)
 	result = _swapchain->GetDesc(&swcDesc);
 	//ディスクリプタをバッファの数だけ生成
 	vector<ID3D12Resource*> _backBuffers(swcDesc.BufferCount);
-	for (int idx = 0; idx < swcDesc.BufferCount; ++idx)
+	for (UINT idx = 0; idx < swcDesc.BufferCount; ++idx)
 	{
 		//バッファのポインタを取得
 		result = _swapchain->GetBuffer(idx, IID_PPV_ARGS(&_backBuffers[idx]));
@@ -243,8 +312,113 @@ int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR,int)
 		_dev->CreateRenderTargetView(_backBuffers[idx], nullptr, handle);
 	}
 
+	//フェンスオブジェクトの宣言と生成（待ちで必要）
+	ID3D12Fence* _fence = nullptr;
+	UINT64 _fenceVal = 0;
+	result = _dev->CreateFence(_fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_fence));
+
 	//ウィンドウ表示
 	ShowWindow(hwnd, SW_SHOW);
+
+	//三角形を生成する用--------------------------------------------------
+	//3つの頂点を定義
+	XMFLOAT3 vertices[]
+	{
+		//左下
+		{-1.0f,-1.0f,0.0f},
+		//左上
+		{-1.0f,+1.0f,0.0f},
+		//右下
+		{+1.0f,-1.0f,0.0f},
+	};
+	//頂点バッファの生成
+	D3D12_HEAP_PROPERTIES heapprop = {};
+	heapprop.Type = D3D12_HEAP_TYPE_UPLOAD;
+	heapprop.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+	heapprop.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+
+	D3D12_RESOURCE_DESC resdesc = {};
+	resdesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	//頂点情報が入るだけのサイズ
+	resdesc.Width = sizeof(vertices);
+	resdesc.Height = 1;
+	resdesc.DepthOrArraySize = 1;
+	resdesc.MipLevels = 1;
+	resdesc.Format = DXGI_FORMAT_UNKNOWN;
+	resdesc.SampleDesc.Count = 1;
+	resdesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+	resdesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+	ID3D12Resource* vertBuff = nullptr;
+
+	result = _dev->CreateCommittedResource(
+		&heapprop,
+		D3D12_HEAP_FLAG_NONE,
+		&resdesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&vertBuff));
+
+	//頂点データをコピ-
+	//メインメモリに頂点バッファと同じメモリを確保
+	XMFLOAT3* vertMap = nullptr;
+	result = vertBuff->Map(0, nullptr, (void**)&vertMap);
+	//確保したメインメモリに頂点データをコピー
+	std::copy(std::begin(vertices), std:: end(vertices), vertMap);
+	//CPUで設定は完了したのでビデオメモリに転送
+	vertBuff->Unmap(0, nullptr);
+
+	//頂点バッファビュー(頂点バッファの説明)
+	D3D12_VERTEX_BUFFER_VIEW vbView = {};
+	//バッファーの仮想アドレス
+	vbView.BufferLocation = vertBuff->GetGPUVirtualAddress();
+	//全バイト数
+	vbView.SizeInBytes = sizeof(vertices);
+	//1頂点当たりのバイト数
+	vbView.StrideInBytes = sizeof(vertices[0]);
+
+	ID3DBlob* _vsBlob = nullptr;
+	ID3DBlob* _psBlob = nullptr;
+
+	ID3DBlob* errorBlob = nullptr;
+	result = D3DCompileFromFile(
+		//シェーダー名
+		L"BasicVertexShader.hlsl",
+		nullptr,
+		D3D_COMPILE_STANDARD_FILE_INCLUDE,
+		"BasicVS", "vs_5_0",
+		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
+		0,
+		&_vsBlob, &errorBlob);
+
+	//ピクセルシェーダーのコンパイルロード
+	if (FAILED(result))
+	{
+		if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+		{
+			::OutputDebugStringA("ファイルが見つかりません");
+		}
+		else
+		{
+			std::string errstr;
+			errstr.resize(errorBlob->GetBufferSize());
+			std::copy_n((char*)errorBlob->GetBufferPointer(),
+				errorBlob->GetBufferSize(), errstr.begin());
+			errstr += "\n";
+			OutputDebugStringA(errstr.c_str());
+		}
+		exit(1);
+	}
+	//頂点レイアウト
+	D3D12_INPUT_ELEMENT_DESC inputLayout[] =
+	{
+		{"POSITION",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,
+		D3D12_APPEND_ALIGNED_ELEMENT,
+		D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
+	};
+
+	//チャレンジ課題1---------------------------------------------
+	float r = 0.0f, g = 0.0f, b = 0.0f;
 
 	while (true)
 	{
@@ -263,16 +437,40 @@ int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR,int)
 
 		//スワップチェーンの動作
 		//DirectX処理
+		//バックバッファのインデックスを取得
 		auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
+
+		D3D12_RESOURCE_BARRIER BarrierDesc = {};
+		//遷移
+		BarrierDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION; 
+		//指定なし
+		BarrierDesc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		//バックバッファーリソース
+		BarrierDesc.Transition.pResource = _backBuffers[bbIdx];
+		BarrierDesc.Transition.Subresource = 0;
+		//直前はPRESENT状態
+		BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+		//今からRT状態
+		BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		//バリア指定実行
+		_cmdList->ResourceBarrier(1, &BarrierDesc);
+
 		//レンダーターゲットを指定
 		auto rtvH = rtvHeaps->GetCPUDescriptorHandleForHeapStart();
 		rtvH.ptr += bbIdx * _dev->GetDescriptorHandleIncrementSize(
 			D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 		_cmdList->OMSetRenderTargets(1, &rtvH, true, nullptr);
 
-		//画面クリア
-		float clearColor[] = { 1.0f,1.0f,0.0f,1.0f };//黄色
+		//画面クリア(α値無し)
+		ColorChange(&r,&g,&b);
+		float clearColor[] = { r,g,b, 1.0f };
 		_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
+
+		//前後だけ入れ替える
+		BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+		_cmdList->ResourceBarrier(1, &BarrierDesc);
+
 		//命令のクローズ
 		_cmdList->Close();
 
@@ -280,7 +478,24 @@ int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR,int)
 		ID3D12CommandList* cmdlists[] = { _cmdList };
 		_cmdQueue->ExecuteCommandLists(1, cmdlists);
 
+		//待ち
+		_cmdQueue->Signal(_fence, ++_fenceVal);
+		if (_fence->GetCompletedValue() != _fenceVal)
+		{
+			//（ビジーループを使うとCPUを消費させるので良くない)
+			//スレッドを寝かせてイベントが起きたらOSに起こしてもらう
+			auto event = CreateEvent(nullptr, false, false, nullptr);
+			//イベントハンドルの取得
+			_fence->SetEventOnCompletion(_fenceVal, event);
+			//イベントが発生するまで無限に待つ
+			WaitForSingleObject(event, INFINITE); 
+			//イベントハンドルを閉じる
+			CloseHandle(event); 
+		}
+
+		//キューをクリア
 		_cmdAllocator->Reset();
+		//再びコマンドリストをためる準備
 		_cmdList->Reset(_cmdAllocator, nullptr);
 
 		_swapchain->Present(1, 0);
