@@ -1,3 +1,3 @@
 ﻿  main.cpp
-C:\Users\USER\Desktop\東京工芸大学\3年後期\プログラムワークショップⅣ\第二回\PGWS4\main.cpp(160,23): warning C4018: '<': signed と unsigned の数値を比較しようとしました。
-  PGWS4.vcxproj -> C:\Users\USER\Desktop\東京工芸大学\3年後期\プログラムワークショップⅣ\第二回\PGWS4\x64\Debug\PGWS4.exe
+C:\Users\USER\Desktop\東京工芸大学\3年後期\プログラムワークショップⅣ\第三回\PGWS4\main.cpp(185,23): warning C4018: '<': signed と unsigned の数値を比較しようとしました。
+  PGWS4.vcxproj -> C:\Users\USER\Desktop\東京工芸大学\3年後期\プログラムワークショップⅣ\第三回\PGWS4\x64\Debug\PGWS4.exe
