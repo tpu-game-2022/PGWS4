@@ -14,7 +14,7 @@
 
 # [03] 第4章：ポリゴンの表示　/ 6.シェーダーの読み込みと生成 　まで（09/27）
 
-![PGWS4_03_AdobeExpress](https://user-images.githubusercontent.com/103874162/193178303-200f4ca4-4f8d-40aa-a2b6-6932768a7b08.gif)
+https://user-images.githubusercontent.com/103874162/193178760-6e5276e9-5001-4e5e-a72a-f9bb4ac99236.mp4
 
 
 # [02] 第3章：初期化から画面クリアまで（09/21）
