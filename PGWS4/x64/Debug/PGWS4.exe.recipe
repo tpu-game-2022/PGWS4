@@ -2,15 +2,15 @@
 <Project>
   <ProjectOutputs>
     <ProjectOutput>
-      <FullPath>C:\Users\USER\Desktop\東京工芸大学\3年後期\プログラムワークショップⅣ\第三回\PGWS4\x64\Debug\PGWS4.exe</FullPath>
+      <FullPath>C:\Users\USER\Desktop\東京工芸大学\3年後期\プログラムワークショップⅣ\第四回\PGWS4\x64\Debug\PGWS4.exe</FullPath>
     </ProjectOutput>
   </ProjectOutputs>
   <ContentFiles>
     <ContentFile>
-      <FullPath>C:\Users\USER\Desktop\東京工芸大学\3年後期\プログラムワークショップⅣ\第三回\PGWS4\x64\Debug\BasicPixelShader.cso</FullPath>
+      <FullPath>C:\Users\USER\Desktop\東京工芸大学\3年後期\プログラムワークショップⅣ\第四回\PGWS4\x64\Debug\BasicPixelShader.cso</FullPath>
     </ContentFile>
     <ContentFile>
-      <FullPath>C:\Users\USER\Desktop\東京工芸大学\3年後期\プログラムワークショップⅣ\第三回\PGWS4\x64\Debug\BasicVertexShader.cso</FullPath>
+      <FullPath>C:\Users\USER\Desktop\東京工芸大学\3年後期\プログラムワークショップⅣ\第四回\PGWS4\x64\Debug\BasicVertexShader.cso</FullPath>
     </ContentFile>
   </ContentFiles>
   <SatelliteDlls />
