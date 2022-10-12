@@ -117,7 +117,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		D3D_FEATURE_LEVEL_11_0,
 	};
 #ifdef _DEBUG
-	auto result = CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(& _dxgiFactory));
+	auto result = CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(&_dxgiFactory));
 #else
 	auto result = CreateDXGIFactory1(IID_PPV_ARGS(&_dxgiFactory));
 #endif
@@ -227,10 +227,22 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	//ウィンドウ表示
 	ShowWindow(hwnd, SW_SHOW);
 
-	XMFLOAT3 vertices[] = { 
-		{-1.0f,-1.0f,0.0f},//左下
-		{-1.0f,+1.0f,0.0f} ,//左上
-		{+1.0f,-1.0f,0.0f} };//右下
+	//XMFLOAT3 vertices[] = {
+	//	{-0.4f,-0.7f,0.0f},//左下
+	//	{-0.4f,+0.7f,0.0f} ,//左上
+	//	{+0.4f,-0.7f,0.0f} ,//右下
+	//	{+0.4f,+0.7f,0.0f} //右上
+	//};
+
+	XMFLOAT3 vertices[] = {
+		{-0.7f,-0.2f,0.0f},
+		{-0.7f,+0.4f,0.0f} ,
+		{-0.3f,-0.2f,0.0f} ,
+		{-0.3f,+0.4f,0.0f} ,
+		{-0.6f,+0.7f,0.0f} ,
+		{-0.5f,+0.5f,0.0f} ,
+		{-0.4f,+0.7f,0.0f} ,
+	};
 	D3D12_HEAP_PROPERTIES heapprop = {};
 	heapprop.Type = D3D12_HEAP_TYPE_UPLOAD;
 	heapprop.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
@@ -281,7 +293,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		&_vsBlob, &errorBlob);//エラー時はerrorBlobにメッセージが入る
 	if (FAILED(result))
 	{
-		if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)) 
+		if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
 		{
 			::OutputDebugStringA("ファイルが見当たりません");
 		}
@@ -330,8 +342,122 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
 	};
 
-	int i[3] = { 100, 0, 0}, deltaFlame = 100, flameCount = 0;
-	int b[6][3] = {{0,1,0},{-1,0,0},{0,0,1},{0,-1,0},{1,0,0},{0,0,-1}};
+	unsigned short indices[] =
+	{
+		0, 1, 2,
+		2, 1, 3,
+		1, 4, 5,//hidarimimi
+		5, 6, 3,//migimimi
+		1, 5, 3//sukima
+	};
+
+	ID3D12Resource* idxBuff = nullptr;
+	//設定は、バッファーのサイズ以外、頂点バッファーの設定を使いまわしてよい
+	resdesc.Width = sizeof(indices);
+	result = _dev->CreateCommittedResource(
+		&heapprop,
+		D3D12_HEAP_FLAG_NONE,
+		&resdesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&idxBuff));
+	//作ったバッファーにインデックスデータをコピー
+	unsigned short* mappedidx = nullptr;
+	idxBuff->Map(0, nullptr, (void**)&mappedidx);
+	copy(begin(indices), end(indices), mappedidx);
+	idxBuff->Unmap(0, nullptr);
+
+	//インデックスビューを作成
+	D3D12_INDEX_BUFFER_VIEW ibView = {};
+	ibView.BufferLocation = idxBuff->GetGPUVirtualAddress();
+	ibView.Format = DXGI_FORMAT_R16_UINT;
+	ibView.SizeInBytes = sizeof(indices);
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpipeline = {};
+
+	gpipeline.pRootSignature = nullptr;//後で設定する
+
+	gpipeline.VS.pShaderBytecode = _vsBlob->GetBufferPointer();
+	gpipeline.VS.BytecodeLength = _vsBlob->GetBufferSize();
+	gpipeline.PS.pShaderBytecode = _psBlob->GetBufferPointer();
+	gpipeline.PS.BytecodeLength = _psBlob->GetBufferSize();
+	//gpipeline.InputLayout.pInputElementDescs = inputLayout;//レイアウト専用アドレス
+	//gpipeline.InputLayout.NumElements = _countof(inputLayout);//レイアウト配列数
+
+
+	//デフォルトのサンプルマスクを表す定数(0xffffffff)
+	gpipeline.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;
+
+	//まだアンチエイリアスは使わないためfalse
+	gpipeline.RasterizerState.MultisampleEnable = false;
+
+	gpipeline.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;//カリングしない
+	gpipeline.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;//中身を塗りつぶす
+	gpipeline.RasterizerState.DepthClipEnable = true;//深度方向のクリッピングは有効に
+
+	gpipeline.BlendState.AlphaToCoverageEnable = false;
+	gpipeline.BlendState.IndependentBlendEnable = false;
+
+	D3D12_RENDER_TARGET_BLEND_DESC renderTargetBlendDesc = {};
+	//ひとまず加算や乗算やαブレンディングは使用しない
+	renderTargetBlendDesc.BlendEnable = false;
+	//ひとまず論理演算は使用しない
+	renderTargetBlendDesc.LogicOpEnable = false;
+	renderTargetBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+	gpipeline.BlendState.RenderTarget[0] = renderTargetBlendDesc;
+
+	gpipeline.InputLayout.pInputElementDescs = inputLayout;//レイアウト先頭アドレス
+	gpipeline.InputLayout.NumElements = _countof(inputLayout);//レイアウト配列の要素数
+
+	gpipeline.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;//ストリップ時のカットなし
+	gpipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;//三角形で構成
+
+	gpipeline.NumRenderTargets = 1;//今回は一つのみ
+	gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;//0～1に正規化されたRGBA
+
+	gpipeline.SampleDesc.Count = 1;
+	gpipeline.SampleDesc.Quality = 0;
+
+	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+	ID3DBlob* rootSigBlob = nullptr;
+	result = D3D12SerializeRootSignature(
+		&rootSignatureDesc,//ルートシグネチャ設定
+		D3D_ROOT_SIGNATURE_VERSION_1_0,//ルートシグネチャバージョン
+		&rootSigBlob,//シェーダーを作った時と同じ
+		&errorBlob);//エラー処理も同じ
+
+	ID3D12RootSignature* rootsignature = nullptr;
+	result = _dev->CreateRootSignature(
+		0,//nodemask 0でよい
+		rootSigBlob->GetBufferPointer(),//シェーダーの時と同様
+		rootSigBlob->GetBufferSize(),//シェーダーの時と同様
+		IID_PPV_ARGS(&rootsignature));
+	rootSigBlob->Release();//不要になったので開放
+
+	gpipeline.pRootSignature = rootsignature;
+
+	ID3D12PipelineState* _pipelinestate = nullptr;
+	result = _dev->CreateGraphicsPipelineState(&gpipeline, IID_PPV_ARGS(&_pipelinestate));
+
+	D3D12_VIEWPORT viewport = {};
+	viewport.Width = window_width;//出力先の幅(ピクセル数)
+	viewport.Height = window_height;//出力先の高さ(ピクセル数)
+	viewport.TopLeftX = 0;//出力先の左上座標X
+	viewport.TopLeftY = 0;//出力先の左上座標Y
+	viewport.MaxDepth = 1.0f;//深度最大値
+	viewport.MinDepth = 0.0f;//深度最小値
+
+	D3D12_RECT scissorrect = {};
+	scissorrect.top = 0;
+	scissorrect.left = 0;
+	scissorrect.right = scissorrect.left + window_width;
+	scissorrect.bottom = scissorrect.top + window_height;
+
+	int RGB[3] = { 100, 0, 0}, deltaFlame = 100, flameCount = 0;
+	int ColorPatarn[6][3] = {{0,1,0},{-1,0,0},{0,0,1},{0,-1,0},{1,0,0},{0,0,-1}};
 	int type = 0;
 	while (true)
 	{	
@@ -351,6 +477,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		//DirectX処理
 		//バックバッファのインデックスを取得
 		auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
+
+		_cmdList->SetPipelineState(_pipelinestate);
 
 		D3D12_RESOURCE_BARRIER BarrierDesc = {};
 		BarrierDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;//遷移
@@ -379,15 +507,23 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		flameCount++;
 		for (int j = 0; j < 3; j++)
 		{
-			i[j] += b[(type) % 6][j];
+			RGB[j] += ColorPatarn[(type) % 6][j];
 		}
-		float clearColor[] = { i[0] / 100.0f, i[1] / 100.0f , i[2] / 100.0f ,1.0f};
+		float clearColor[] = { RGB[0] / 100.0f, RGB[1] / 100.0f , RGB[2] / 100.0f ,1.0f};
 		_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
 
 		//前後だけ入れ替える
 		BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 		BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
 		_cmdList->ResourceBarrier(1, &BarrierDesc);
+
+		_cmdList->SetGraphicsRootSignature(rootsignature);
+		_cmdList->RSSetViewports(1, &viewport);
+		_cmdList->RSSetScissorRects(1, &scissorrect);
+		_cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		_cmdList->IASetVertexBuffers(0, 1, &vbView);
+		_cmdList->IASetIndexBuffer(&ibView);
+		_cmdList->DrawIndexedInstanced(15, 1, 0, 0, 0);
 
 		//命令のクローズ
 		_cmdList->Close();
