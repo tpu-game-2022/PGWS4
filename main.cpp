@@ -237,11 +237,19 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	//ウィンドウ表示
 	ShowWindow(hwnd, SW_SHOW);
 
+	//頂点データ
 	XMFLOAT3 vertices[] = {
-		{-1.0f,-1.0f,0.0f},//左下
-		{-1.0f,+1.0f,0.0f},//左上
-		{+1.0f,-1.0f,0.0f}//右下
+		{-0.3f,-0.5f,0.0f},//左下
+		{-0.3f,+0.5f,0.0f},//左上
+		{+0.4f,-0.7f,0.0f},//右下
+		{+0.4f,+0.7f,0.0f},//右上
 	};
+
+	//XMFLOAT3 vertices[] = {
+	//	{-1.0f,-1.0f,0.0f},//左下
+	//	{-1.0f,+1.0f,0.0f},//左上
+	//	{+1.0f,-1.0f,0.0f}//右下
+	//};
 
 	D3D12_HEAP_PROPERTIES heapprop = {};
 	heapprop.Type = D3D12_HEAP_TYPE_UPLOAD;
@@ -268,6 +276,35 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(&vertBuff));
+
+	//頂点インデックス
+	unsigned short indices[] = {
+		0,1,2,2,1,3
+	};
+
+	ID3D12Resource* idxBuff = nullptr;
+	//設定はバッファーのサイズ以外、頂点バッファーの設定を使いまわしてよい
+	resbesc.Width = sizeof(indices);
+	result = _dev->CreateCommittedResource(
+		&heapprop,
+		D3D12_HEAP_FLAG_NONE,
+		&resbesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&idxBuff));
+
+	//作ったバッファーにインデックスデータをコピー
+	unsigned short* mappedIdx = nullptr;
+	idxBuff->Map(0, nullptr, (void**)&mappedIdx);
+	std::copy(std::begin(indices), std::end(indices), mappedIdx);
+	idxBuff->Unmap(0, nullptr);
+
+	//インデックスバッファービューを作成
+	D3D12_INDEX_BUFFER_VIEW ibView = {};
+	ibView.BufferLocation = idxBuff->GetGPUVirtualAddress();
+	ibView.Format = DXGI_FORMAT_R16_UINT;
+	ibView.SizeInBytes = sizeof(indices);
+
 
 	ID3DBlob* _vsBlob = nullptr;
 	ID3DBlob* _psBlob = nullptr;
@@ -299,6 +336,32 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		exit(1);
 	}
 
+	result = D3DCompileFromFile(
+		L"BasicPixelShader.hlsl",//シェーダー名
+		nullptr,//defineはなし
+		D3D_COMPILE_STANDARD_FILE_INCLUDE,//インクルードはデフォルト
+		"BasicPS", "ps_5_0",//関数はBasicPS、対象シェーダーはps_5_0
+		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,//デバッグ用及び最適化なし
+		0,
+		&_psBlob, &errorBlob);//エラー次はerrorBlobにメッセージが入る
+
+	if (FALSE(result))//この場合はエラーメッセージが入ってこない
+	{
+		if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)) {
+			::OutputDebugStringA("ファイルが見当たりません");
+
+		}
+		else {
+			std::string errstr;
+			errstr.resize(errorBlob->GetBufferSize());
+			std::copy_n((char*)errorBlob->GetBufferPointer(),
+				errorBlob->GetBufferSize(), errstr.begin());
+			errstr += "\n";
+			OutputDebugStringA(errstr.c_str());
+		}
+		exit(1);
+	}
+
 	D3D12_INPUT_ELEMENT_DESC inputLayout[] =
 	{
 		{"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT,0,
@@ -316,6 +379,88 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	vbView.SizeInBytes = sizeof(vertices);//全バイト数
 	vbView.StrideInBytes = sizeof(vertices[0]);//１頂点あたりのバイト数
 
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpipeline = {};
+
+	gpipeline.pRootSignature = nullptr;//あとで設定する
+
+	gpipeline.VS.pShaderBytecode = _vsBlob->GetBufferPointer();
+	gpipeline.VS.BytecodeLength = _vsBlob->GetBufferSize();
+	gpipeline.PS.pShaderBytecode = _psBlob->GetBufferPointer();
+	gpipeline.PS.BytecodeLength = _psBlob->GetBufferSize();
+
+	//デフォルトのサンプルマスクを表す定数（0xfffffff）
+	gpipeline.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;
+
+	//まだアンチエイリアスは使わないためfalse
+	gpipeline.RasterizerState.MultisampleEnable = false;
+
+	gpipeline.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;//カリングしない
+	gpipeline.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;//中身を塗りつぶす
+	gpipeline.RasterizerState.DepthClipEnable = true;//深度方向のクリッピングは有効に
+
+	gpipeline.BlendState.AlphaToCoverageEnable = false;
+	gpipeline.BlendState.IndependentBlendEnable = false;
+
+	D3D12_RENDER_TARGET_BLEND_DESC renderTargetBlandDesc = {};
+	//ひとまず加算、乗算、αブレンディングにしない
+	renderTargetBlandDesc.BlendEnable = false;
+	//ひとまず論理演算はしない
+	renderTargetBlandDesc.LogicOpEnable = false;
+	renderTargetBlandDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+	gpipeline.BlendState.RenderTarget[0] = renderTargetBlandDesc;
+
+	gpipeline.InputLayout.pInputElementDescs = inputLayout;//レイアウト先頭アドレス
+	gpipeline.InputLayout.NumElements = _countof(inputLayout);//レイアウト配列の要素数
+
+	gpipeline.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;//ストリップ時カットなし
+	gpipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;//三角形で構成
+
+	gpipeline.NumRenderTargets = 1;//今は一つのみ
+	gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;//０～１に正規化されたRGBA
+
+	gpipeline.SampleDesc.Count = 1;//サンプリングは１ピクセルにつき１
+	gpipeline.SampleDesc.Quality = 0;//クオリティ最低
+
+	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+	ID3DBlob* rootSigBlob = nullptr;
+	result = D3D12SerializeRootSignature(
+		&rootSignatureDesc,//ルートシグネチャ設定
+		D3D_ROOT_SIGNATURE_VERSION_1_0,//ルートシグネチャバージョン
+		&rootSigBlob,//シェーダーを作ったときと同じ
+		&errorBlob);//エラー処理も同じ
+
+	ID3D12RootSignature* rootsignature = nullptr;
+	result = _dev->CreateRootSignature(
+		0,//nodemask。０でよい
+		rootSigBlob->GetBufferPointer(),//シェーダーのときと同様
+		rootSigBlob->GetBufferSize(),//シェーダーのときと同様
+		IID_PPV_ARGS(&rootsignature));
+	rootSigBlob->Release();//不要になったので解放
+
+	gpipeline.pRootSignature = rootsignature;
+
+	ID3D12PipelineState* _pipelinestate = nullptr;
+	result = _dev->CreateGraphicsPipelineState(&gpipeline, IID_PPV_ARGS(&_pipelinestate));
+
+	D3D12_VIEWPORT viewport = {};
+	viewport.Width = window_width;//出力先の幅(ピクセル数)
+	viewport.Height = window_height;//出力先の高さ（ピクセル数）
+	viewport.TopLeftX = 0;//出力先の左上座標X
+	viewport.TopLeftY = 0;//　　　の左上座標Y
+	viewport.MaxDepth = 1.0f;//深度最大値
+	viewport.MinDepth = 0.0f;//深度最小値
+
+	D3D12_RECT scissorrect = {};
+	scissorrect.top = 0;//切り抜き上座標
+	scissorrect.left = 0;//切り抜き左座標
+	scissorrect.right = scissorrect.left + window_width;//切り抜き右座標
+	scissorrect.bottom = scissorrect.top + window_height;//切り抜き下座標
+
+
+
 	while (true)
 	{
 		MSG msg;
@@ -326,28 +471,41 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
 
 		//レンダーターゲットを指定
-		D3D12_RESOURCE_BARRIER BarrierDesc = {};
-		BarrierDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;//遷移
-		BarrierDesc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;//特に指定なし
-		BarrierDesc.Transition.pResource = _backBuffers[bbIdx];//バックバッファーリソース
-		BarrierDesc.Transition.Subresource = 0;
-		BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;//直前はPRESENT状態
-		BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;//今からRT状態
-		_cmdList->ResourceBarrier(1, &BarrierDesc);//バリア指定実行
+		//D3D12_RESOURCE_BARRIER BarrierDesc = {};
+		//BarrierDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;//遷移
+		//BarrierDesc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;//特に指定なし
+		//BarrierDesc.Transition.pResource = _backBuffers[bbIdx];//バックバッファーリソース
+		//BarrierDesc.Transition.Subresource = 0;
+		//BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;//直前はPRESENT状態
+		//BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;//今からRT状態
+		//_cmdList->ResourceBarrier(1, &BarrierDesc);//バリア指定実行
 
+		_cmdList->SetPipelineState(_pipelinestate);
+
+		//レンダーターゲットを指定
 		auto rtvH = rtvHeaps->GetCPUDescriptorHandleForHeapStart();
 		rtvH.ptr += bbIdx * _dev->GetDescriptorHandleIncrementSize(
 			D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 		_cmdList->OMSetRenderTargets(1, &rtvH, true, nullptr);
 
 		//画面クリア
-		float clearColor[] = { 1.0f,1.0f,0.0f,1.0f };//黄色
+		//float clearColor[] = { 1.0f,1.0f,0.0f,1.0f };//黄色
+		float clearColor[] = { 0.0f,0.0f,0.3f,1.0f };//白色
 		_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
 
-		//前後だけ入れ替える
-		BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-		_cmdList->ResourceBarrier(1, &BarrierDesc);
+		_cmdList->SetGraphicsRootSignature(rootsignature);
+		_cmdList->RSSetViewports(1, &viewport);
+		_cmdList->RSSetScissorRects(1, &scissorrect);
+		_cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+		_cmdList->IASetVertexBuffers(0, 1,&vbView);//０＝頂点ビューの数、１＝スロット番号
+		_cmdList->IASetIndexBuffer(&ibView);
+		//_cmdList->DrawInstanced(4, 1, 0, 0);//4＝頂点数、１＝インスタンス数、０＝頂点データのオフセット、０＝インスタンスのオフセット
+		_cmdList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+
+		////前後だけ入れ替える
+		//BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		//BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+		//_cmdList->ResourceBarrier(1, &BarrierDesc);
 
 		//命令のクローズ
 		_cmdList->Close();
