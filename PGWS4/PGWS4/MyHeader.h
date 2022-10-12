@@ -1,5 +1,5 @@
-#pragma once
+ï»¿#pragma once
 
-// [2] ƒ`ƒƒƒŒƒ“ƒW–â‘è
-// ‰æ–ÊF‚ðƒOƒ‰ƒf[ƒVƒ‡ƒ“‚³‚¹‚é‚½‚ß‚ÌŠÖ”
+// [2] ãƒãƒ£ãƒ¬ãƒ³ã‚¸å•é¡Œ
+// ç”»é¢è‰²ã‚’ã‚°ãƒ©ãƒ‡ãƒ¼ã‚·ãƒ§ãƒ³ã•ã›ã‚‹ãŸã‚ã®é–¢æ•°
 void Gradation(float* r, float* g, float* b);
