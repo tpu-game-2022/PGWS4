@@ -12,4 +12,5 @@
 次の授業の2日前（水曜日の授業であれば月曜日一杯）
 
 # 画像
-![スクリーンショット (55)](https://user-images.githubusercontent.com/71632467/191463532-3d3ec943-1499-43ca-b70f-6f280f787945.png)
+
+![スクリーンショット (74)](https://user-images.githubusercontent.com/71632467/195860742-67b6e271-9a90-4a2c-bf1c-524e1d2d2ecc.png)
