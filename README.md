@@ -9,7 +9,7 @@
 
 # 結果画像
 
-![pgws4sc](https://user-images.githubusercontent.com/71791660/191463566-87d057e0-f5f9-4a1f-a972-65823571543e.jpg)
+![チャレンジ課題](https://user-images.githubusercontent.com/71791660/196054839-549fc248-258e-4f99-b375-7fc0e7ae72e8.jpg)
 
 
 # 締め切り
