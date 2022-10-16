@@ -18,13 +18,6 @@
 using namespace std;
 using namespace DirectX;
 
-enum Color
-{
-	Red,
-	Green,
-	Blue,
-};
-
 ///@brief コンソール画面にフォーマット付き文字列を表示
 ///@param format フォーマット(%dとか%fとかの)
 ///@param 可変長引数
@@ -58,18 +51,6 @@ void EnableDebugLayer()
 }
 #endif // _DEBUG
 
-void Gradation(float* color, int colorCount, bool coloring)
-{
-	if (coloring)
-	{
-		*color = (float)colorCount / 255.0f;
-	}
-	else
-	{
-		*color = (255.0f - (float)colorCount) / 255.0f;
-	}
-}
-
 #ifdef _DEBUG
 	int main() {
 #else
@@ -79,14 +60,6 @@ void Gradation(float* color, int colorCount, bool coloring)
 	
 	const unsigned int window_width = 1280;
 	const unsigned int window_height = 720;
-
-	float red = 1.0f;
-	float green = 1.0f;
-	float blue = 0.0f;
-	int colorCount = 0;
-	const int colorNumMax = 255;
-	bool coloring = true;
-	Color color = Blue;
 
 	ID3D12Device* _dev = nullptr;
 	IDXGIFactory6* _dxgiFactory = nullptr;
@@ -261,9 +234,17 @@ void Gradation(float* color, int colorCount, bool coloring)
 	ShowWindow(hwnd, SW_SHOW);
 
 	XMFLOAT3 vertices[] = {
-		{-1.0f, -1.0f, 0.0f}, // 左下
-		{-1.0f, +1.0f, 0.0f}, // 左上
-		{+1.0f, -1.0f, 0.0f}, // 右下
+		{-0.4f, -0.7f, 0.0f}, // 左下
+		{-0.4f, +0.7f, 0.0f}, // 左上
+		{+0.0f, -0.7f, 0.0f}, // 右下
+		{+0.0f, +0.7f, 0.0f}, // 右上
+		{+0.4f, -0.7f, 0.0f}, // さらに右下に追加し三角形を増やす
+	};
+
+	unsigned short indices[] = {
+		0, 1, 2,
+		2, 1, 3,
+		3, 4, 2  // 追加した三角形のインデックス情報
 	};
 
 	D3D12_HEAP_PROPERTIES heapprop = {};
@@ -281,6 +262,29 @@ void Gradation(float* color, int colorCount, bool coloring)
 	resdesc.SampleDesc.Count = 1;
 	resdesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 	resdesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+	ID3D12Resource* idxBuff = nullptr;
+	// 設定は、バッファーのサイズ以外、頂点バッファーの設定を使いまわしてよい
+	resdesc.Width = sizeof(indices);
+	result = _dev->CreateCommittedResource(
+		&heapprop,
+		D3D12_HEAP_FLAG_NONE,
+		&resdesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&idxBuff));
+
+	// 作ったバッファーにインデックスデータをコピー
+	unsigned short* mappedIdx = nullptr;
+	idxBuff->Map(0, nullptr, (void**)&mappedIdx);
+	std::copy(std::begin(indices), std::end(indices), mappedIdx);
+	idxBuff->Unmap(0, nullptr);
+
+	// インデックスバッファービューを作成
+	D3D12_INDEX_BUFFER_VIEW ibView = {};
+	ibView.BufferLocation = idxBuff->GetGPUVirtualAddress();
+	ibView.Format = DXGI_FORMAT_R16_UINT;
+	ibView.SizeInBytes = sizeof(indices);
 
 	ID3D12Resource* vertBuff = nullptr;
 
@@ -352,6 +356,94 @@ void Gradation(float* color, int colorCount, bool coloring)
 		exit(1); // 行儀悪いかな…
 	}
 
+	D3D12_INPUT_ELEMENT_DESC inputLayout[] =
+	{
+		{"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT,0,
+			D3D12_APPEND_ALIGNED_ELEMENT,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0}
+	};
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpipeline = {};
+
+	gpipeline.pRootSignature = nullptr; // あとで設定する
+
+	gpipeline.VS.pShaderBytecode = _vsBlob->GetBufferPointer();
+	gpipeline.VS.BytecodeLength = _vsBlob->GetBufferSize();
+	gpipeline.PS.pShaderBytecode = _psBlob->GetBufferPointer();
+	gpipeline.PS.BytecodeLength = _psBlob->GetBufferSize();
+
+	// デフォルトのサンプルマスクを表す定数（0xffffffff）
+	gpipeline.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;
+
+	// まだアンチエイリアスは使わないため false
+	gpipeline.RasterizerState.MultisampleEnable = false;
+
+	gpipeline.RasterizerState.CullMode = D3D12_CULL_MODE_NONE; // カリングしない
+	gpipeline.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID; // 中身を塗りつぶす
+	gpipeline.RasterizerState.DepthClipEnable = true; // 深度方向のクリッピングは有効に
+
+	gpipeline.BlendState.AlphaToCoverageEnable = false;
+	gpipeline.BlendState.IndependentBlendEnable = false;
+
+	D3D12_RENDER_TARGET_BLEND_DESC renderTargetBlendDesc = {};
+	// ひとまず加算や乗算やαブレンディングは使用しない
+	renderTargetBlendDesc.LogicOpEnable = false;
+	// ひとまず論理演算は使用しない
+	renderTargetBlendDesc.LogicOpEnable = false;
+	renderTargetBlendDesc.RenderTargetWriteMask =
+		D3D12_COLOR_WRITE_ENABLE_ALL;
+
+	gpipeline.BlendState.RenderTarget[0] = renderTargetBlendDesc;
+
+	gpipeline.InputLayout.pInputElementDescs = inputLayout; // レイアウト先頭アドレス
+	gpipeline.InputLayout.NumElements = _countof(inputLayout); // レイアウト配列の要素数
+
+	gpipeline.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED; // ストリップ時のカットなし
+	gpipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; // 三角形で構成
+
+	gpipeline.NumRenderTargets = 1; // 今は１つのみ
+	gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM; // 0～1に正規化されたRGBA
+
+	gpipeline.SampleDesc.Count = 1; // サンプリングは1ピクセルにつき1
+	gpipeline.SampleDesc.Quality = 0; // クオリティは最低
+
+	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+	ID3DBlob* rootSigBlob = nullptr;
+	result = D3D12SerializeRootSignature(
+		&rootSignatureDesc, // ルートシグネチャ設定
+		D3D_ROOT_SIGNATURE_VERSION_1_0, // ルートシグネチャバージョン
+		&rootSigBlob, // シェーダーを作った時と同じ
+		&errorBlob); // エラー処理も同じ
+
+	ID3D12RootSignature* rootsignature = nullptr;
+	result = _dev->CreateRootSignature(
+		0, // nodemask。0 でよい
+		rootSigBlob->GetBufferPointer(), // シェーダ―の時と同様
+		rootSigBlob->GetBufferSize(), // シェーダーの時と同様
+		IID_PPV_ARGS(&rootsignature));
+
+	gpipeline.pRootSignature = rootsignature;
+
+	ID3D12PipelineState* _pipelinestate = nullptr;
+	result = _dev->CreateGraphicsPipelineState(&gpipeline, IID_PPV_ARGS(&_pipelinestate));
+
+	D3D12_VIEWPORT viewport = {};
+	viewport.Width = window_width; // 出力の幅（ピクセル数）
+	viewport.Height = window_height; // 出力の高さ（ピクセル数）
+	viewport.TopLeftX = 0; // 出力先の左上座標X
+	viewport.TopLeftY = 0; // 出力先の左上座標Y
+	viewport.MaxDepth = 1.0f; // 深度最大値
+	viewport.MinDepth = 1.0f; // 深度最小値
+
+	// ビューポート全てを表示する設定
+	D3D12_RECT scissorrect = {};
+	scissorrect.top = 0; // 切り抜き上座標
+	scissorrect.left = 0; // 切り抜き左座標
+	scissorrect.right = scissorrect.left + window_width; // 切り抜き右座標
+	scissorrect.bottom = scissorrect.top + window_height; // 切り抜き下座標
+
 	while (true)
 	{
 		MSG msg;
@@ -371,6 +463,9 @@ void Gradation(float* color, int colorCount, bool coloring)
 		// バックバッファのインデックスを取得
 		auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
 
+		// パイプラインステートのセット
+		_cmdList->SetPipelineState(_pipelinestate);
+
 		D3D12_RESOURCE_BARRIER BarrierDesc = {};
 		BarrierDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION; // 遷移
 		BarrierDesc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE; // 特に指定なし
@@ -386,46 +481,22 @@ void Gradation(float* color, int colorCount, bool coloring)
 			D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 		_cmdList->OMSetRenderTargets(1, &rtvH, true, nullptr);
 
-		// 画面の色をグラデーションで変える
-		colorCount++;
-		if (color == Red)
-		{
-			Gradation(&red, colorCount, coloring);
-			if (colorCount == colorNumMax)
-			{
-				colorCount = 0;
-				color = Green;
-			}
-		}
-		else if (color == Green)
-		{
-			Gradation(&green, colorCount, coloring);
-			if (colorCount == colorNumMax)
-			{
-				colorCount = 0;
-				color = Blue;
-			}
-		}
-		else if (color == Blue)
-		{
-			Gradation(&blue, colorCount, coloring);
-
-			if (colorCount == colorNumMax)
-			{
-				colorCount = 0;
-				color = Red;
-				coloring = !coloring;
-			}
-		}
-
 		// 画面クリア
-		float clearColor[] = { red, green, blue, 1.0f }; // 黄色
+		float clearColor[] = { 0.0f, 0.0f, 0.3f, 1.0f }; // 白色
 		_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
 
-		// 前後だけ入れ替える
-		BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-		_cmdList->ResourceBarrier(1, &BarrierDesc);
+		// ルートシグネチャのセット
+		_cmdList->SetGraphicsRootSignature(rootsignature);
+		// ビューポートとシザー矩形のセット
+		_cmdList->RSSetViewports(1, &viewport);
+		_cmdList->RSSetScissorRects(1, &scissorrect);
+		// プリミティブトポロジのセット
+		_cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		// 頂点情報のセット
+		_cmdList->IASetVertexBuffers(0, 1, &vbView);
+		_cmdList->IASetIndexBuffer(&ibView);
+		// 描画(Draw)命令
+		_cmdList->DrawIndexedInstanced(9, 1, 0, 0, 0);
 
 		// 命令のクローズ
 		_cmdList->Close();
