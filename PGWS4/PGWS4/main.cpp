@@ -233,18 +233,29 @@ void EnableDebugLayer()
 	// ウィンドウ表示
 	ShowWindow(hwnd, SW_SHOW);
 
-	XMFLOAT3 vertices[] = {
-		{-0.4f, -0.7f, 0.0f}, // 左下
-		{-0.4f, +0.7f, 0.0f}, // 左上
-		{+0.0f, -0.7f, 0.0f}, // 右下
-		{+0.0f, +0.7f, 0.0f}, // 右上
-		{+0.4f, -0.7f, 0.0f}, // さらに右下に追加し三角形を増やす
+	//XMFLOAT3 vertices[] = {
+	//	{-0.4f, -0.7f, 0.0f}, // 左下
+	//	{-0.4f, +0.7f, 0.0f}, // 左上
+	//	{+0.4f, -0.7f, 0.0f}, // 右下
+	//	{+0.4f, +0.7f, 0.0f}, // 右上
+	//};
+
+	// 頂点データ構造体
+	struct Vertex {
+		XMFLOAT3 pos; // xyz座標
+		XMFLOAT2 uv; // uv座標
+	};
+
+	Vertex vertices[] = {
+		{{-0.4f, -0.7f, 0.0f},{0.0f, 1.0f}}, // 左下
+		{{-0.4f, +0.7f, 0.0f},{0.0f, 0.0f}}, // 左上
+		{{+0.4f, -0.7f, 0.0f},{1.0f, 1.0f}}, // 右下
+		{{+0.4f, +0.7f, 0.0f},{1.0f, 0.0f}}, // 右上
 	};
 
 	unsigned short indices[] = {
 		0, 1, 2,
-		2, 1, 3,
-		3, 4, 2  // 追加した三角形のインデックス情報
+		2, 1, 3
 	};
 
 	D3D12_HEAP_PROPERTIES heapprop = {};
@@ -296,7 +307,7 @@ void EnableDebugLayer()
 		nullptr,
 		IID_PPV_ARGS(&vertBuff));
 
-	XMFLOAT3* vertMap = nullptr;
+	Vertex* vertMap = nullptr; // 型をVertex に変更
 	result = vertBuff->Map(0, nullptr, (void**)&vertMap);
 	std::copy(std::begin(vertices), std::end(vertices), vertMap);
 	vertBuff->Unmap(0, nullptr);
@@ -358,9 +369,15 @@ void EnableDebugLayer()
 
 	D3D12_INPUT_ELEMENT_DESC inputLayout[] =
 	{
-		{"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT,0,
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
 			D3D12_APPEND_ALIGNED_ELEMENT,
-			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0}
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0
+		},
+		{ // uv（追加）
+			"TEXCOORD",0,DXGI_FORMAT_R32G32_FLOAT,0,
+			D3D12_APPEND_ALIGNED_ELEMENT,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0
+		}
 	};
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpipeline = {};
@@ -410,6 +427,42 @@ void EnableDebugLayer()
 	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
 	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
+	D3D12_DESCRIPTOR_RANGE descTblRange = {};
+
+	descTblRange.NumDescriptors = 1; // テクスチャ1 つ
+	descTblRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV; // 種別はテクスチャ
+	descTblRange.BaseShaderRegister = 0; // 0 番スロットから
+	descTblRange.OffsetInDescriptorsFromTableStart =
+		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER rootparam = {};
+	rootparam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	// ピクセルシェーダーから見える
+	rootparam.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	// ディスクリプタレンジのアドレス
+	rootparam.DescriptorTable.pDescriptorRanges = &descTblRange;
+	// ディスクリプタレンジ数
+	rootparam.DescriptorTable.NumDescriptorRanges = 1;
+
+	rootSignatureDesc.pParameters = &rootparam; // ルートパラメーターの先頭アドレス
+	rootSignatureDesc.NumParameters = 1; // ルートパラメーター数
+
+	D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
+	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP; // 横方向の繰り返し
+	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP; // 縦方向の繰り返し
+	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP; // 奥行きの繰り返し
+	samplerDesc.BorderColor =
+		D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK; // ボーダーは黒
+	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR; // 線形補間
+	samplerDesc.MaxLOD = D3D12_FLOAT32_MAX; // ミップマップ最大値
+	samplerDesc.MinLOD = 0.0f; // ミップマップ最小値
+	samplerDesc.ShaderVisibility =
+		D3D12_SHADER_VISIBILITY_PIXEL; // ピクセルシェーダーから見える
+	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER; // リサンプリングしない
+
+	rootSignatureDesc.pStaticSamplers = &samplerDesc;
+	rootSignatureDesc.NumStaticSamplers = 1;
+
 	ID3DBlob* rootSigBlob = nullptr;
 	result = D3D12SerializeRootSignature(
 		&rootSignatureDesc, // ルートシグネチャ設定
@@ -443,6 +496,87 @@ void EnableDebugLayer()
 	scissorrect.left = 0; // 切り抜き左座標
 	scissorrect.right = scissorrect.left + window_width; // 切り抜き右座標
 	scissorrect.bottom = scissorrect.top + window_height; // 切り抜き下座標
+
+	struct TexRGBA
+	{
+		unsigned char R, G, B, A;
+	};
+
+	std::vector<TexRGBA> texturedata(256 * 256);
+	for (auto& rgba : texturedata)
+	{
+		rgba.R = rand() % 256;
+		rgba.G = rand() % 256;
+		rgba.B = rand() % 256;
+		rgba.A = 255; // αは1.0 とする
+	}
+
+	// WriteToSubresource で転送するためのヒープ設定
+	D3D12_HEAP_PROPERTIES texHeapProp = {};
+	// 特殊な設定なのでDEFAULT でもUPLOAD でもない
+	texHeapProp.Type = D3D12_HEAP_TYPE_CUSTOM;
+	// ライトバック
+	texHeapProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
+	// 転送はL0、つまりCPU 側から直接行う
+	texHeapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
+	// 単一アダプターのため0
+	texHeapProp.CreationNodeMask = 0;
+	texHeapProp.VisibleNodeMask = 0;
+
+	D3D12_RESOURCE_DESC resDesc = {};
+	resDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // RGMA フォーマット
+	resDesc.Width = 256; // 幅
+	resDesc.Height = 256; // 高さ
+	resDesc.DepthOrArraySize = 1; // 2D で配列でもないので１
+	resDesc.SampleDesc.Count = 1; // 通常テクスチャなのでアンチエイリアシングしない
+	resDesc.SampleDesc.Quality = 0; // クオリティは最低
+	resDesc.MipLevels = 1; // ミップマップしないのでミップ数は1 つ
+	resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D; // 2D テクスチャ用
+	resDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN; // レイアウトは決定しない
+	resDesc.Flags = D3D12_RESOURCE_FLAG_NONE; // 特にフラグなし
+
+	ID3D12Resource* texbuff = nullptr;
+	result = _dev->CreateCommittedResource(
+		&texHeapProp,
+		D3D12_HEAP_FLAG_NONE, // 特に指定なし
+		&resDesc,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, // テクスチャ用指定
+		nullptr,
+		IID_PPV_ARGS(&texbuff));
+
+	result = texbuff->WriteToSubresource(
+		0,
+		nullptr, // 全領域へコピー
+		texturedata.data(), // 元データアドレス
+		sizeof(TexRGBA) * 256, // 1 ラインサイズ
+		sizeof(TexRGBA) * (UINT)texturedata.size() // 全サイズ
+	);
+
+	ID3D12DescriptorHeap* texDescHeap = nullptr;
+	D3D12_DESCRIPTOR_HEAP_DESC descHeapDesc = {};
+	// シェーダーから見えるように
+	descHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	// マスクは0
+	descHeapDesc.NodeMask = 0;
+	// ビューは今のところ1 つだけ
+	descHeapDesc.NumDescriptors = 1;
+	// シェーダーリソースビュー用
+	descHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	// 生成
+	result = _dev->CreateDescriptorHeap(&descHeapDesc, IID_PPV_ARGS(&texDescHeap));
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // RGBA（0.0f ～ 1.0f に正規化）
+	srvDesc.Shader4ComponentMapping =
+		D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; // 後述
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D; // 2D テクスチャ
+	srvDesc.Texture2D.MipLevels = 1; // ミップマップは使用しないので1
+
+	_dev->CreateShaderResourceView(
+		texbuff, // ビューと関連付けるバッファー
+		&srvDesc, // 先ほど設定したテクスチャ設定情報
+		texDescHeap->GetCPUDescriptorHandleForHeapStart() // ヒープのどこに割り当てるか
+	);
 
 	while (true)
 	{
@@ -487,6 +621,12 @@ void EnableDebugLayer()
 
 		// ルートシグネチャのセット
 		_cmdList->SetGraphicsRootSignature(rootsignature);
+		// ディスクリプタヒープのセット
+		_cmdList->SetDescriptorHeaps(1, &texDescHeap);
+		// ルートパラメーターとディスクリプタヒープの関連付け
+		_cmdList->SetGraphicsRootDescriptorTable(
+			0, // ルートパラメーターインデックス
+			texDescHeap->GetGPUDescriptorHandleForHeapStart()); // ヒープアドレス
 		// ビューポートとシザー矩形のセット
 		_cmdList->RSSetViewports(1, &viewport);
 		_cmdList->RSSetScissorRects(1, &scissorrect);
@@ -496,7 +636,8 @@ void EnableDebugLayer()
 		_cmdList->IASetVertexBuffers(0, 1, &vbView);
 		_cmdList->IASetIndexBuffer(&ibView);
 		// 描画(Draw)命令
-		_cmdList->DrawIndexedInstanced(9, 1, 0, 0, 0);
+		_cmdList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+		//_cmdList->DrawInstanced(4, 1, 0, 0);
 
 		// 命令のクローズ
 		_cmdList->Close();
