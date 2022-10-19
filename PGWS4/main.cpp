@@ -203,27 +203,17 @@ result = _dev->CreateFence(_fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_fenc
 
 ShowWindow(hwnd, SW_SHOW);
 
-//XMFLOAT3 vertices[] =
-//{
-//	{-1.0f,-1.0f,0.0f},
-//	{-1.0f,+1.0f,0.0f},
-//	{+1.0f,-1.0f,0.0f},
-//};
+struct Vertex {
+	XMFLOAT3 pos;
+	XMFLOAT2 uv;
+};
 
-//XMFLOAT3 vertices[] =
-//{
-//	{-0.5f,-0.7f,0.0f},//左下
-//	{+0.0f,+0.7f,0.0f},//左上
-//	{+0.5f,-0.7f,0.0f},//右下
-//};
-
-XMFLOAT3 vertices[] =
+Vertex vertices[] =
 {
-	{-0.0f,-0.8f,0.0f},//下
-	{-0.8f,+0.4f,0.0f},//左
-	{-0.4f,+0.8f,0.0f},//左上
-	{+0.4f,+0.8f,0.0f},//右上
-	{+0.8f,+0.4f,0.0f},//右
+	{{-0.4f,-0.7f,0.0f},{0.0f,1.0f}},
+	{{-0.4f,+0.7f,0.0f},{0.0f,0.0f}},
+	{{+0.4f,-0.7f,0.0f},{1.0f,1.0f}},
+	{{+0.4f,+0.7f,0.0f},{1.0f,0.0f}},
 };
 
 D3D12_HEAP_PROPERTIES heapprop = {};
@@ -245,8 +235,7 @@ resdesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 unsigned short indices[] =
 {
 	0,1,2,
-	0,2,3,
-	0,3,4
+	2,1,3,
 };
 
 ID3D12Resource* idxBuff = nullptr;
@@ -280,7 +269,7 @@ result = _dev->CreateCommittedResource(
 	nullptr,
 	IID_PPV_ARGS(&vertBuff));
 
-XMFLOAT3* vertMap = nullptr;
+Vertex* vertMap = nullptr;
 result = vertBuff->Map(0, nullptr, (void**)&vertMap);
 std::copy(std::begin(vertices), std::end(vertices), vertMap);
 vertBuff->Unmap(0, nullptr);
@@ -344,6 +333,7 @@ if (FAILED(result))
 			errorBlob->GetBufferSize(), errstr.begin());
 		errstr += "\n";
 		OutputDebugStringA(errstr.c_str());
+		OutputDebugStringA(errstr.c_str());
 	}
 	exit(1);
 }
@@ -351,6 +341,9 @@ if (FAILED(result))
 D3D12_INPUT_ELEMENT_DESC inputLayout[] = 
 {
 	{"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT,0,
+	D3D12_APPEND_ALIGNED_ELEMENT,
+	D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
+	{"TEXCOORD",0,DXGI_FORMAT_R32G32_FLOAT,0,
 	D3D12_APPEND_ALIGNED_ELEMENT,
 	D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
 };
@@ -401,6 +394,35 @@ gpipeline.SampleDesc.Quality = 0;
 D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc{};
 rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
+D3D12_DESCRIPTOR_RANGE descTblRange = {};
+descTblRange.NumDescriptors = 1;
+descTblRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+descTblRange.BaseShaderRegister = 0;
+descTblRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+D3D12_ROOT_PARAMETER rootparam = {};
+rootparam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+rootparam.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+rootparam.DescriptorTable.pDescriptorRanges = &descTblRange;
+rootparam.DescriptorTable.NumDescriptorRanges = 1;
+
+rootSignatureDesc.pParameters = &rootparam;
+rootSignatureDesc.NumParameters = 1;
+
+D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
+samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+samplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+samplerDesc.MinLOD = 0.0f;
+samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+
+rootSignatureDesc.pStaticSamplers = &samplerDesc;
+rootSignatureDesc.NumStaticSamplers = 1;
+
 ID3DBlob* rootSigBlob = nullptr;
 result = D3D12SerializeRootSignature(
 	&rootSignatureDesc,
@@ -435,6 +457,77 @@ scissorrect.left = 0;
 scissorrect.right = scissorrect.left + window_width;
 scissorrect.bottom = scissorrect.top + window_height;
 
+struct TexRGBA
+{
+	unsigned char R, G, B, A;
+};
+
+std::vector<TexRGBA> texturedata(256 * 256);
+for (auto& rgba : texturedata)
+{
+	rgba.R = rand() % 256;
+	rgba.G = rand() % 256;
+	rgba.B = rand() % 256;
+	rgba.A = 255;
+}
+
+D3D12_HEAP_PROPERTIES texHeapProp = {};
+texHeapProp.Type = D3D12_HEAP_TYPE_CUSTOM;
+texHeapProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
+texHeapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
+texHeapProp.CreationNodeMask = 0;
+texHeapProp.VisibleNodeMask = 0;
+
+D3D12_RESOURCE_DESC resDesc = {};
+resDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+resDesc.Width = 256;
+resDesc.Height = 256;
+resDesc.DepthOrArraySize = 1;
+resDesc.SampleDesc.Count = 1;
+resDesc.SampleDesc.Quality = 0;
+resDesc.MipLevels = 1;
+resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+resDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+resDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+ID3D12Resource* texbuff = nullptr;
+result = _dev->CreateCommittedResource(
+	&texHeapProp,
+	D3D12_HEAP_FLAG_NONE,
+	&resDesc,
+	D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+	nullptr,
+	IID_PPV_ARGS(&texbuff)
+);
+
+result = texbuff->WriteToSubresource(
+	0,
+	nullptr,
+	texturedata.data(),
+	sizeof(TexRGBA) * 256, sizeof(TexRGBA) * (UINT)texturedata.size()
+);
+
+ID3D12DescriptorHeap* texDescHeap = nullptr;
+D3D12_DESCRIPTOR_HEAP_DESC descHeapDesc = {};
+descHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+descHeapDesc.NodeMask = 0;
+descHeapDesc.NumDescriptors = 1;
+descHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+
+result = _dev->CreateDescriptorHeap(&descHeapDesc, IID_PPV_ARGS(&texDescHeap));
+
+D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+srvDesc.Texture2D.MipLevels = 1;
+
+_dev->CreateShaderResourceView(
+	texbuff,
+	&srvDesc,
+	texDescHeap->GetCPUDescriptorHandleForHeapStart()
+);
+
 while (true)
 {
 	MSG msg;
@@ -468,32 +561,7 @@ while (true)
 		D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	_cmdList->OMSetRenderTargets(1, &rtvH, true, nullptr);
 
-	//背景の色を黄緑色に変更
-	float clearColor[] = { 0.5f,1.0f,0.0f,1.0f };
-
-	//float clearColor[] = { color[0],color[1],color[2],1.0f };
-
-	//if (!colorFlag)
-	//{
-	//	color[0] -= 0.01f;
-	//	color[1] -= 0.01f;
-	//	color[2] += 0.01f;
-	//}
-	//else
-	//{
-	//	color[0] += 0.01f;
-	//	color[1] += 0.01f;
-	//	color[2] -= 0.01f;
-	//}
-
-	//if (color[0] <= 0.0f)
-	//{
-	//	colorFlag = true;
-	//}
-	//else if (color[0] >= 1.0f)
-	//{
-	//	colorFlag = false;
-	//}
+	float clearColor[] = { 0.0f,0.0f,0.3f,1.0f };
 
 	_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
 
@@ -502,6 +570,10 @@ while (true)
 	_cmdList->ResourceBarrier(1, &BarrierDesc);
 
 	_cmdList->SetGraphicsRootSignature(rootsignature);
+	_cmdList->SetDescriptorHeaps(1, &texDescHeap);
+	_cmdList->SetGraphicsRootDescriptorTable(
+		0,
+		texDescHeap->GetGPUDescriptorHandleForHeapStart());
 
 	_cmdList->RSSetViewports(1, &viewport);
 	_cmdList->RSSetScissorRects(1, &scissorrect);
@@ -511,7 +583,7 @@ while (true)
 	_cmdList->IASetVertexBuffers(0, 1, &vbView);
 	_cmdList->IASetIndexBuffer(&ibView);
 
-	_cmdList->DrawIndexedInstanced(9, 1, 0, 0, 0);
+	_cmdList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 
 	_cmdList->Close();
 
