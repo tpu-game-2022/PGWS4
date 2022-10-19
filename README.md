@@ -14,5 +14,8 @@
 ![2022-10-12 (1)](https://user-images.githubusercontent.com/71643403/195298667-8fca590c-bfe6-4039-8002-0dc5bddef8f8.png)
 
 
+# 10月19日(水)までの授業の進捗
+![2022-10-19 (1)](https://user-images.githubusercontent.com/71643403/196703027-ac78c4b3-2118-4430-a851-6d96fc1e5bd6.png)
+
 # 締め切り
 次の授業の2日前（水曜日の授業であれば月曜日一杯）
