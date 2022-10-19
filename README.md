@@ -20,3 +20,6 @@
 
 ![DX12テスト 2022_10_16 11_51_04](https://user-images.githubusercontent.com/71632844/196015795-1fce757a-432a-464e-943e-7757843a4218.png)
 
+# 第5回課題 結果画像
+![DX12テスト 2022_10_19 18_00_48](https://user-images.githubusercontent.com/71632844/196652194-d2e3094b-cbe9-422c-8619-82afe92fb4c7.png)
+
