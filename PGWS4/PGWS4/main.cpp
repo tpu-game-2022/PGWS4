@@ -74,7 +74,6 @@ int WINAPI WinMain(HINSTANCE < HINSTANCE, LPSTR, int)
 	ID3D12CommandQueue* _cmdQueue = nullptr;
 	IDXGISwapChain4* _swapchain = nullptr;
 
-
 	WNDCLASSEX w = {};
 
 	w.cbSize = sizeof(WNDCLASSEX);
