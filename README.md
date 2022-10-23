@@ -9,7 +9,7 @@
 
 # 結果画像
 
-![チャレンジ課題](https://user-images.githubusercontent.com/71791660/196054839-549fc248-258e-4f99-b375-7fc0e7ae72e8.jpg)
+![進捗画像](https://user-images.githubusercontent.com/71791660/197399926-8188e9ee-10c3-4fa1-a8a4-6319ec049193.jpg)
 
 
 # 締め切り
