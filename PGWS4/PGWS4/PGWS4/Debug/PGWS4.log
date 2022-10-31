@@ -1,0 +1,6 @@
+﻿  main.cpp
+C:\Users\81906\source\repos\PGWS4\PGWS4\PGWS4\main.cpp(220,24): warning C4018: '<': signed と unsigned の数値を比較しようとしました。
+C:\Users\81906\source\repos\PGWS4\PGWS4\PGWS4\main.cpp(603,20): warning C4018: '<': signed と unsigned の数値を比較しようとしました。
+C:\Users\81906\source\repos\PGWS4\PGWS4\PGWS4\main.cpp(961,20): warning C4018: '<': signed と unsigned の数値を比較しようとしました。
+C:\Users\81906\source\repos\PGWS4\PGWS4\PGWS4\main.cpp(175,10): warning C4101: 'CreateSwapChainForHwnd': ローカル変数は 1 度も使われていません。
+  PGWS4.vcxproj -> C:\Users\81906\source\repos\PGWS4\PGWS4\Debug\PGWS4.exe
