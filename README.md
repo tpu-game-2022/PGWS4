@@ -25,8 +25,8 @@
 ![DX12 テスト 2022_10_19 18_11_57](https://user-images.githubusercontent.com/71679716/196649763-b0227f15-0098-48b6-8401-a1067fded994.png)
 
 2022年10月31日
-・10月26日の講義分まで更新しました!
-[DX12 テスト  2022_10_31 14_59_56](https://user-images.githubusercontent.com/71679716/198941878-e19d403f-a74c-49d2-9445-a3b0cc24c9c6.png)
+・10月26日の講義分まで更新しました
+![DX12 テスト  2022_10_31 14_59_56](https://user-images.githubusercontent.com/71679716/198941878-e19d403f-a74c-49d2-9445-a3b0cc24c9c6.png)
 
 
 # 締め切り
