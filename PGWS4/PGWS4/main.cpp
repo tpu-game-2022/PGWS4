@@ -39,15 +39,6 @@ LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	return DefWindowProc(hwnd, msg, wparam, lparam);//既定の処理を行う
 }
 
-// アライメントにそろえたサイズを返す
-// @param size 元のサイズ
-// @param alignment アライメントサイズ
-// @return アライメントをそろえたサイズ
-size_t AlignmentedSize(size_t size, size_t alignment)
-{
-	return size + alignment - size % alignment;
-}
-
 #ifdef _DEBUG
 void EnableDebugLayer()
 {
@@ -144,7 +135,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	{
 		DXGI_ADAPTER_DESC adesc = {};
 		adpt->GetDesc(&adesc);//アダプターの説明オブジェクト取得
-	std:wstring strDesc = adesc.Description;
+	std::wstring strDesc = adesc.Description;
 		//探したいアダプターの名前を確認
 		if (strDesc.find(L"NVIDIA") != std::string::npos)
 		{
@@ -175,15 +166,6 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	cmdQueueDese.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
 	cmdQueueDese.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 	result = _dev->CreateCommandQueue(&cmdQueueDese, IID_PPV_ARGS(&_cmdQeue));
-
-	HRESULT CreateSwapChainForHwnd(
-		IUnknown * pDevice,
-		HWND hWnd,
-		const DXGI_SWAP_CHAIN_DESC1 * pDesc,
-		const DXGI_SWAP_CHAIN_FULLSCREEN_DESC * pFullscreenDesc,
-		IDXGIOutput * pRestrictToOutput,
-		IDXGISwapChain1 * *ppSwapChain
-	);
 
 	DXGI_SWAP_CHAIN_DESC1 swapchainDesc = {};
 	swapchainDesc.Width = window_width;
@@ -222,7 +204,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
 	std::vector<ID3D12Resource*>_backBuffers(swcDesc.BufferCount);
-	for (int idx = 0; idx < swcDesc.BufferCount; ++idx)
+	for (unsigned int idx = 0; idx < swcDesc.BufferCount; ++idx)
 	{
 		result = _swapchain->GetBuffer(idx, IID_PPV_ARGS(&_backBuffers[idx]));
 		D3D12_CPU_DESCRIPTOR_HANDLE handle
@@ -296,14 +278,14 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	//設定は、バッファーのサイズ以外、頂点バッファーの設定を使いまわしても良い
 	resoucepDesc.Width = sizeof(indices);
 	result = _dev->CreateCommittedResource(
-		&heapProp,
+		&heapProp,  //UPLOAD ヒープとして
 		D3D12_HEAP_FLAG_NONE,
-		&resoucepDesc,
+		&resoucepDesc,  //サイズに応じて適切な設定をしてくれる
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(&idxbuff));
 
-
+	/* 既にvertBuffは作られているのにここで作り直して上書きをしていたので削除
 	result = _dev->CreateCommittedResource(
 		&heapProp,  //UPLOAD ヒープとして
 		D3D12_HEAP_FLAG_NONE,
@@ -311,6 +293,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(&vertBuff));
+	*/
 
 	//作ったバッファーにインデックスデータをコピー
 	unsigned short* mappedIdx = nullptr;
@@ -487,7 +470,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		D3D_ROOT_SIGNATURE_VERSION_1_0,  //ルートシグネチャバージョン
 		&rotSigBlob,  //シェーダを作ったときと同じ
 		&errorBlob);  //エラー処理も同じ
-	
+
 	ID3D12RootSignature* rootSigunature = nullptr;
 	result = _dev->CreateRootSignature(
 		0,  //nodemask。0でよい
@@ -500,7 +483,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	ID3D12PipelineState* _pipelinesture = nullptr;
 	result = _dev->CreateGraphicsPipelineState(&gpipline, IID_PPV_ARGS(&_pipelinesture));
-	
+
 	//WICテクスチャのロード
 	TexMetadata metadata = {};
 	ScratchImage scratchImg = {};
@@ -540,17 +523,17 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	D3D12_RESOURCE_DESC resDesc = {};
 	resDesc.Format = DXGI_FORMAT_UNKNOWN;  //単なるデータの塊なのでUNKOWN
 	resDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER; //単なるバッファーとして指定
-	
-	resDesc.Height = 1; 
-	resDesc.DepthOrArraySize = 1;  
-	resDesc.MipLevels = 1; 
-	
+
+	resDesc.Height = 1;
+	resDesc.DepthOrArraySize = 1;
+	resDesc.MipLevels = 1;
+
 	resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;  //連続したデータ
 	resDesc.Flags = D3D12_RESOURCE_FLAG_NONE;  //特にフラグなし
 
 	resDesc.SampleDesc.Count = 1;  //通常テクスチャなのでアンチエイリアシングしない
 	resDesc.SampleDesc.Quality = 0;  //クオリティは最低
-	
+
 
 	//中間バッファ作成
 	ID3D12Resource* uploadbuff = nullptr;
@@ -622,11 +605,11 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		IID_PPV_ARGS(&texbuff));
 
 	uint8_t* mapforImg = nullptr;  //image->pixelsと同じ型にする
-	result = uploadbuff ->Map(0, nullptr,(void**) & mapforImg);  //マップ
+	result = uploadbuff->Map(0, nullptr, (void**)&mapforImg);  //マップ
 
 	auto srcAddress = img->pixels;
 
-	auto rowPitch = AlignmentedSize(img->rowPitch, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
+	auto rowPitch = AligmentSize(img->rowPitch, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
 
 	for (int y = 0; y < img->height; ++y)
 	{
@@ -727,7 +710,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	//float alpha = 0;
 	while (true)
 	{
-		MSG msg ;
+		MSG msg;
 		if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
 		{
 			//アプリケーションが終わるときにmessageがWM_QUITになる
@@ -758,7 +741,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		auto rtvH = rtvHeaps->GetCPUDescriptorHandleForHeapStart();
 		rtvH.ptr += bbIdx * _dev->GetDescriptorHandleIncrementSize(
 			D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-		_cmdList->OMSetRenderTargets(1, &rtvH, 0,nullptr);
+		_cmdList->OMSetRenderTargets(1, &rtvH, 0, nullptr);
 
 		//チャレンジ問題用
 		//alpha = alpha + 0.01f;
@@ -784,7 +767,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 		_cmdList->IASetVertexBuffers(0, 1, &vbView);
 		_cmdList->IASetIndexBuffer(&ibView);
-		
+
 		_cmdList->DrawIndexedInstanced(6, 1, 0, 0, 0); //6=インデックス数
 
 		//前後だけ入れ替える
@@ -811,7 +794,8 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			CloseHandle(event);  //イベントハンドルを閉じる
 		}
 
-		_cmdList->Reset(_cmdAllocator, nullptr); //キューをクリア
+		_cmdAllocator->Reset(); // キューをクリア
+		_cmdList->Reset(_cmdAllocator, _pipelinesture); //キューをクリア
 		_swapchain->Present(1, 0); //再びコマンドリストを溜める準備
 	}
 	//もうクラスは使わないので登録解除する
@@ -821,4 +805,3 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	getchar();
 	return 0;
 }
-
