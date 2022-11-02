@@ -1,5 +1,0 @@
-﻿  main.cpp
-C:\Users\himak\Desktop\航太\プログラムワークショップIV\PGWS4\PGWS4\main.cpp(223,24): warning C4018: '<': signed と unsigned の数値を比較しようとしました。
-C:\Users\himak\Desktop\航太\プログラムワークショップIV\PGWS4\PGWS4\main.cpp(626,20): warning C4018: '<': signed と unsigned の数値を比較しようとしました。
-C:\Users\himak\Desktop\航太\プログラムワークショップIV\PGWS4\PGWS4\main.cpp(962,20): warning C4018: '<': signed と unsigned の数値を比較しようとしました。
-  PGWS4.vcxproj -> C:\Users\himak\Desktop\航太\プログラムワークショップIV\PGWS4\Debug\PGWS4.exe
