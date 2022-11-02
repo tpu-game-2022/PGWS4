@@ -23,6 +23,9 @@
 # 11月2日(水)までの授業の進捗
 ![debug](https://user-images.githubusercontent.com/71643403/199436669-a6e53245-daa7-4f89-8e9b-0949ca306bcb.gif)
 
+https://user-images.githubusercontent.com/71643403/199436814-8813a351-c31b-47dd-ac7c-8d2aca9ec692.mp4
+
+
 
 # 締め切り
 次の授業の2日前（水曜日の授業であれば月曜日一杯）
