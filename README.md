@@ -18,7 +18,8 @@
 ![2022-10-19 (1)](https://user-images.githubusercontent.com/71643403/196703027-ac78c4b3-2118-4430-a851-6d96fc1e5bd6.png)
 
 # 10月26日(水)に出された課題
-![2022-10-31](https://user-images.githubusercontent.com/71643403/198945669-d4170a9f-699d-4f2e-9564-d2da776dee56.png)
+![2022-11-02 (2)](https://user-images.githubusercontent.com/71643403/199426753-e3e14501-7ba3-45aa-82ed-cc324e728ae2.png)
+
 
 # 締め切り
 次の授業の2日前（水曜日の授業であれば月曜日一杯）
