@@ -20,6 +20,9 @@
 # 10月26日(水)に出された課題
 ![2022-11-02 (2)](https://user-images.githubusercontent.com/71643403/199426753-e3e14501-7ba3-45aa-82ed-cc324e728ae2.png)
 
+# 11月2日(水)までの授業の進捗
+![debug](https://user-images.githubusercontent.com/71643403/199436669-a6e53245-daa7-4f89-8e9b-0949ca306bcb.gif)
+
 
 # 締め切り
 次の授業の2日前（水曜日の授業であれば月曜日一杯）
