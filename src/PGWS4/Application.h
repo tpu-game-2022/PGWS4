@@ -114,6 +114,34 @@ private:
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> LoadTextureFromFile(std::string& texPath, ID3D12Device* dev);
 
+	// 初期化の部分処理
+	static Microsoft::WRL::ComPtr<IDXGIFactory6> InitializeGraphicsInterface();
+	static Microsoft::WRL::ComPtr<ID3D12Device> InitializeDevice(IDXGIFactory6* dxgiFactory);
+	static void InitializeCommand(Microsoft::WRL::ComPtr<ID3D12CommandAllocator>& cmdAllocator,
+		Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList>& cmdList, 
+		Microsoft::WRL::ComPtr<ID3D12CommandQueue>& cmdQueue, ID3D12Device* dev);
+	static Microsoft::WRL::ComPtr<IDXGISwapChain4> CreateSwapChain(unsigned int width, unsigned int height,
+		IDXGIFactory6* dxgiFactory, ID3D12CommandQueue* cmdQueue, HWND hwnd);
+	static void InitializeBackBuffers(std::vector<ID3D12Resource*>& backBuffers, Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>& rtvHeaps,
+		ID3D12Device* dev, IDXGISwapChain4* swapchain);
+	void InitializeDepthBuffer(Microsoft::WRL::ComPtr<ID3D12Resource>& depthBuffer, Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>& dsvHeap,
+		unsigned int width, unsigned int height, ID3D12Device* dev);
+	UINT64 InitializeFence(Microsoft::WRL::ComPtr<ID3D12Fence>& fence, ID3D12Device* dev);
+
+	void InitializeTextureLoaderTable(std::map<std::string, LoadLambda_t>& loadLambdaTable);
+
+	HRESULT LoadPMDFile(const char* path);
+	D3D12_CONSTANT_BUFFER_VIEW_DESC CreateMaterialData();
+	void CreateMaterialAndTextureView(D3D12_CONSTANT_BUFFER_VIEW_DESC & matCBVDesc);
+
+	static Microsoft::WRL::ComPtr<ID3D12RootSignature> CreateRootSignature(ID3D12Device* dev);
+	static Microsoft::WRL::ComPtr<ID3DBlob> LoadShader(LPCWSTR pFileName, LPCSTR pEntrypoint, LPCSTR pTarget);
+	static Microsoft::WRL::ComPtr<ID3D12PipelineState> CreateBasicGraphicsPipeline(
+		ID3D12Device* dev, ID3DBlob* vsBlob, ID3DBlob* psBlob, ID3D12RootSignature* rootsignature);
+
+	void InitializeMatrixes();
+	void CreateSceneTransformView();
+
 private:
 	// シングルトンのためにコンストラクタをprivate に
 	// さらにコピーと代入を禁止する
