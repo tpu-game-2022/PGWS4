@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="PMD">
+      <UniqueIdentifier>{c9ae5179-d468-48d2-bdaf-bb4d8ee6b6b0}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -20,6 +23,15 @@
     </ClCompile>
     <ClCompile Include="Application.cpp">
       <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="Dx12Wrapper.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="PMDActor.cpp">
+      <Filter>PMD</Filter>
+    </ClCompile>
+    <ClCompile Include="PMDRenderer.cpp">
+      <Filter>PMD</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -38,6 +50,15 @@
   <ItemGroup>
     <ClInclude Include="Application.h">
       <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="Dx12Wrapper.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="PMDActor.h">
+      <Filter>PMD</Filter>
+    </ClInclude>
+    <ClInclude Include="PMDRenderer.h">
+      <Filter>PMD</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

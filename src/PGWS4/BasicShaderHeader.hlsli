@@ -16,7 +16,7 @@ SamplerState smp : register(s0); // 0 番スロットに設定されたサンプラー
 SamplerState smpToon : register(s1); // 1 番スロットに設定されたサンプラー（トゥーン用）
 
 // 定数バッファー
-cbuffer cbuff0 : register(b0)
+cbuffer SceneData : register(b0)
 {
 	matrix world; // ワールド行列
 	matrix view; // ビュー行列
@@ -24,9 +24,14 @@ cbuffer cbuff0 : register(b0)
 	float3 eye; // 視点
 };
 
-// 定数バッファー1
+//cbuffer Transform : register(b1)
+//{
+//	matrix world; // ワールド行列
+//};
+
+// 定数バッファー2
 // マテリアル用
-cbuffer SceneBuffer : register(b1)
+cbuffer Material : register(b1)
 {
 	float4 diffuse;	// ディフューズ色
 	float4 specular;// スペキュラ
