@@ -18,20 +18,19 @@ SamplerState smpToon : register(s1); // 1 番スロットに設定されたサンプラー（トゥ
 // 定数バッファー
 cbuffer SceneData : register(b0)
 {
-	matrix world; // ワールド行列
 	matrix view; // ビュー行列
 	matrix proj; // プロジェクション行列
 	float3 eye; // 視点
 };
 
-//cbuffer Transform : register(b1)
-//{
-//	matrix world; // ワールド行列
-//};
+cbuffer Transform : register(b1)
+{
+	matrix world; // ワールド行列
+};
 
 // 定数バッファー2
 // マテリアル用
-cbuffer Material : register(b1)
+cbuffer Material : register(b2)
 {
 	float4 diffuse;	// ディフューズ色
 	float4 specular;// スペキュラ

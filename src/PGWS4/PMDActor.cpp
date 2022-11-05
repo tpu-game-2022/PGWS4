@@ -281,14 +281,11 @@ HRESULT PMDActor::LoadPMDFile(const char* path)
 	return S_OK;
 }
 
-D3D12_CONSTANT_BUFFER_VIEW_DESC PMDActor::CreateMaterialData()
+void PMDActor::CreateMaterialData()
 {
 	// マテリアルバッファーを作成
-	auto materialBuffSize = sizeof(MaterialForHlsl);
-	materialBuffSize = (materialBuffSize + 0xff) & ~0xff;
-
-	const D3D12_HEAP_PROPERTIES heapPropMat =
-		CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	auto materialBuffSize =(sizeof(MaterialForHlsl) + 0xff) & ~0xff;
+	const D3D12_HEAP_PROPERTIES heapPropMat = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	const D3D12_RESOURCE_DESC resDescMat = CD3DX12_RESOURCE_DESC::Buffer(
 		materialBuffSize * _materialNum);// もったいないが仕方ない
 	auto _dev = _dx12.Device();
@@ -308,10 +305,15 @@ D3D12_CONSTANT_BUFFER_VIEW_DESC PMDActor::CreateMaterialData()
 		mapMaterial += materialBuffSize; // 次のアライメント位置まで進める（256 の倍数）
 	}
 	_materialBuff->Unmap(0, nullptr);
+}
 
+void PMDActor::CreateMaterialAndTextureView()
+{
+	ID3D12Device* _dev = _dx12.Device().Get();
+
+	// ディスクリプタヒープ
 	D3D12_DESCRIPTOR_HEAP_DESC materialDescHeapDesc = {};
-	materialDescHeapDesc.Flags =
-		D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	materialDescHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	materialDescHeapDesc.NodeMask = 0;
 	materialDescHeapDesc.NumDescriptors = _materialNum * 5; // マテリアル数分（定数1つ、テクスチャ4つ）
 	materialDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -319,21 +321,14 @@ D3D12_CONSTANT_BUFFER_VIEW_DESC PMDActor::CreateMaterialData()
 	ThrowIfFailed(_dev->CreateDescriptorHeap(
 		&materialDescHeapDesc, IID_PPV_ARGS(_materialDescHeap.ReleaseAndGetAddressOf())));
 
+	// ディスクリプタの作成
+	// マテリアルのCBV
+	UINT materialBuffSize = (sizeof(MaterialForHlsl) + 0xff) & ~0xff;
 	D3D12_CONSTANT_BUFFER_VIEW_DESC matCBVDesc = {};
+	matCBVDesc.BufferLocation = _materialBuff->GetGPUVirtualAddress(); // バッファーアドレス
+	matCBVDesc.SizeInBytes = static_cast<UINT>(materialBuffSize); // マテリアルの256 アライメントサイズ
 
-	matCBVDesc.BufferLocation =
-		_materialBuff->GetGPUVirtualAddress(); // バッファーアドレス
-	matCBVDesc.SizeInBytes =
-		static_cast<UINT>(materialBuffSize); // マテリアルの256 アライメントサイズ
-
-	return matCBVDesc;
-}
-
-void PMDActor::CreateMaterialAndTextureView(D3D12_CONSTANT_BUFFER_VIEW_DESC& matCBVDesc)
-{
-	auto _dev = _dx12.Device();
-
-	// 通常テクスチャビュー作成
+	// テクスチャ用SRV
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM; // デフォルト
 	srvDesc.Shader4ComponentMapping =
@@ -342,18 +337,16 @@ void PMDActor::CreateMaterialAndTextureView(D3D12_CONSTANT_BUFFER_VIEW_DESC& mat
 		D3D12_SRV_DIMENSION_TEXTURE2D; // 2D テクスチャ
 	srvDesc.Texture2D.MipLevels = 1; // ミップマップは使用しないので1
 
-	// 先頭を記録
 	CD3DX12_CPU_DESCRIPTOR_HANDLE matDescHeapH(
 		_materialDescHeap->GetCPUDescriptorHandleForHeapStart());
-	UINT incSize = _dev->GetDescriptorHandleIncrementSize(
-		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	UINT incSize = _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	for (UINT i = 0; i < _materialNum; ++i)
 	{
 		// マテリアル用定数バッファービュー
 		_dev->CreateConstantBufferView(&matCBVDesc, matDescHeapH);
 		matDescHeapH.ptr += incSize;
-		matCBVDesc.BufferLocation += matCBVDesc.SizeInBytes;
+		matCBVDesc.BufferLocation += static_cast<UINT>(materialBuffSize);
 
 		if (_textureResources[i] == nullptr)
 		{
@@ -414,27 +407,60 @@ void PMDActor::CreateMaterialAndTextureView(D3D12_CONSTANT_BUFFER_VIEW_DESC& mat
 	}
 }
 
+void PMDActor::CreateTransformView()
+{
+	//GPUバッファ作成
+	unsigned int buffSize = (sizeof(Transform) + 0xff) & ~0xff;
+	CD3DX12_HEAP_PROPERTIES heapProp(D3D12_HEAP_TYPE_UPLOAD);
+	CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(buffSize);
 
+	ThrowIfFailed(_dx12.Device()->CreateCommittedResource(
+		&heapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&resDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(_transformBuff.ReleaseAndGetAddressOf())
+	));
+
+	// 値のコピー
+	ThrowIfFailed(_transformBuff->Map(0, nullptr, (void**)&_mappedTransform));
+	*_mappedTransform = _transform;
+
+	// ディスクリプタヒープ
+	D3D12_DESCRIPTOR_HEAP_DESC transformDescHeapDesc = {};
+	transformDescHeapDesc.NumDescriptors = 1;// ワールド行列ひとつ
+	transformDescHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	transformDescHeapDesc.NodeMask = 0;
+
+	transformDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;//デスクリプタヒープ種別
+	ThrowIfFailed(_dx12.Device()->CreateDescriptorHeap(&transformDescHeapDesc, IID_PPV_ARGS(_transformHeap.ReleaseAndGetAddressOf())));//生成
+
+	//ビューの作成
+	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+	cbvDesc.BufferLocation = _transformBuff->GetGPUVirtualAddress();
+	cbvDesc.SizeInBytes = buffSize;
+	_dx12.Device()->CreateConstantBufferView(&cbvDesc, _transformHeap->GetCPUDescriptorHandleForHeapStart());
+}
+
+void* PMDActor::Transform::operator new(size_t size) {
+	return _aligned_malloc(size, 16);
+}
 
 PMDActor::PMDActor(const char* filepath, PMDRenderer& renderer) :
 	_renderer(renderer),
 	_dx12(renderer._dx12),
 	_angle(0.0f)
 {
-//	_transform.world = XMMatrixIdentity();
-//	LoadPMDFile(filepath);
-//	CreateTransformView();
-//	CreateMaterialData();
-//	CreateMaterialAndTextureView();
-
 	ThrowIfFailed(LoadPMDFile(filepath));
 
-	D3D12_CONSTANT_BUFFER_VIEW_DESC matCBVDesc = CreateMaterialData();
-	CreateMaterialAndTextureView(matCBVDesc);
+	CreateMaterialData();
+	CreateMaterialAndTextureView();
 
-
+	// 座標変換
+	_transform.world = XMMatrixIdentity();
+	CreateTransformView();
 }
-
 
 PMDActor::~PMDActor()
 {
@@ -443,33 +469,33 @@ PMDActor::~PMDActor()
 void PMDActor::Update() 
 {
 	_angle += 0.03f;
-//	_mappedTransform->world = XMMatrixRotationY(_angle);
+	_mappedTransform->world = XMMatrixRotationY(_angle);
 }
 void PMDActor::Draw() 
 {
-	_dx12.CommandList()->IASetVertexBuffers(0, 1, &_vbView);
-	_dx12.CommandList()->IASetIndexBuffer(&_ibView);
+	ID3D12GraphicsCommandList* cmdList = _dx12.CommandList().Get();
 
-//	ID3D12DescriptorHeap* transheaps[] = { _transformHeap.Get() };
-//	_dx12.CommandList()->SetDescriptorHeaps(1, transheaps);
-//	_dx12.CommandList()->SetGraphicsRootDescriptorTable(1, _transformHeap->GetGPUDescriptorHandleForHeapStart());
+	// 行列
+	ID3D12DescriptorHeap* transheaps[] = { _transformHeap.Get() };
+	cmdList->SetDescriptorHeaps(1, transheaps);
+	cmdList->SetGraphicsRootDescriptorTable(1, _transformHeap->GetGPUDescriptorHandleForHeapStart());
 
-	_dx12.CommandList()->SetDescriptorHeaps(1, _materialDescHeap.GetAddressOf());
+	// 頂点データ
+	cmdList->IASetVertexBuffers(0, 1, &_vbView);
+	cmdList->IASetIndexBuffer(&_ibView);
 
-//	ID3D12DescriptorHeap* mdh[] = { _materialHeap.Get() };
-//	//マテリアル
-//	_dx12.CommandList()->SetDescriptorHeaps(1, mdh);
+	// マテリアル
+	ID3D12DescriptorHeap* mdh[] = { _materialDescHeap.Get() };
+	cmdList->SetDescriptorHeaps(1, mdh);
 
-	auto materialH = _materialDescHeap->GetGPUDescriptorHandleForHeapStart(); // ヒープ先頭
-	unsigned int idxOffset = 0; // 最初はオフセットなし
-
+	D3D12_GPU_DESCRIPTOR_HANDLE materialH = _materialDescHeap->GetGPUDescriptorHandleForHeapStart(); // ヒープ先頭
+	unsigned int idxOffset = 0;
 	UINT cbvsrvIncSize = _dx12.Device()->GetDescriptorHandleIncrementSize(
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 5;
 	for (Material& m : materials)
 	{
-		_dx12.CommandList()->SetGraphicsRootDescriptorTable(1, materialH);
-//		_dx12.CommandList()->SetGraphicsRootDescriptorTable(2, materialH);
-		_dx12.CommandList()->DrawIndexedInstanced(m.indicesNum, 1, idxOffset, 0, 0);
+		cmdList->SetGraphicsRootDescriptorTable(2, materialH);
+		cmdList->DrawIndexedInstanced(m.indicesNum, 1, idxOffset, 0, 0);
 		materialH.ptr += cbvsrvIncSize;
 		idxOffset += m.indicesNum;
 	}

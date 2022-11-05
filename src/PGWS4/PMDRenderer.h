@@ -21,6 +21,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> _gradTex = nullptr;
 
 private:
+	// 初期化の部分処理
 	static Microsoft::WRL::ComPtr<ID3D12RootSignature> CreateRootSignature(ID3D12Device* dev);
 	static Microsoft::WRL::ComPtr<ID3DBlob> LoadShader(LPCWSTR pFileName, LPCSTR pEntrypoint, LPCSTR pTarget);
 	static Microsoft::WRL::ComPtr<ID3D12PipelineState> CreateBasicGraphicsPipeline(

@@ -15,6 +15,7 @@ static inline void ThrowIfFailed(HRESULT hr)
 
 static ComPtr<ID3D12Resource> CreateMonoTexture(ID3D12Device* dev, unsigned int val)
 {
+	// リソース
 	D3D12_HEAP_PROPERTIES texHeapProp = CD3DX12_HEAP_PROPERTIES(
 		D3D12_CPU_PAGE_PROPERTY_WRITE_BACK,
 		D3D12_MEMORY_POOL_L0);
@@ -33,6 +34,7 @@ static ComPtr<ID3D12Resource> CreateMonoTexture(ID3D12Device* dev, unsigned int 
 	);
 	if (FAILED(result)) { return nullptr; }
 
+	// 初期化データ
 	std::vector<unsigned char> data(4 * 4 * 4);
 	std::fill(data.begin(), data.end(), val); // 全部valで埋める
 
@@ -60,6 +62,7 @@ static ComPtr<ID3D12Resource> CreateBlackTexture(ID3D12Device* dev)
 // デフォルトグラデーションテクスチャ
 static ComPtr<ID3D12Resource> CreateGrayGradationTexture(ID3D12Device* dev)
 {
+	// リソース
 	D3D12_HEAP_PROPERTIES texHeapProp = CD3DX12_HEAP_PROPERTIES(
 		D3D12_CPU_PAGE_PROPERTY_WRITE_BACK,
 		D3D12_MEMORY_POOL_L0);
@@ -78,16 +81,18 @@ static ComPtr<ID3D12Resource> CreateGrayGradationTexture(ID3D12Device* dev)
 	);
 	if (FAILED(result)) { return nullptr; }
 
-	// 上が白くて下が黒いテクスチャデータを作成
-	std::vector<unsigned int> data(4 * 256);
+	// 初期化データ
+	std::vector<unsigned int> data(4 * 256);	// 上が白くて下が黒いテクスチャデータを作成
 	auto it = data.begin();
 	unsigned int c = 0xff;
 	for (; it != data.end(); it += 4)
-	{//RGBAが逆並びのためRGBマクロと0xff<<24を用いて表す
-		unsigned int col = (0xff << 24) | RGB(c, c, c);
+	{
+		unsigned int col = (0xff << 24) | RGB(c, c, c);//RGBAが逆並びのためRGBマクロと0xff<<24を用いて表す
 		std::fill(it, it + 4, col);
 		--c;
 	}
+
+	// データ転送
 	result = gradBuff->WriteToSubresource(
 		0,
 		nullptr,
@@ -100,26 +105,23 @@ static ComPtr<ID3D12Resource> CreateGrayGradationTexture(ID3D12Device* dev)
 
 ComPtr<ID3D12RootSignature> PMDRenderer::CreateRootSignature(ID3D12Device* dev)
 {
-	CD3DX12_DESCRIPTOR_RANGE descTblRange[3] = {};// テクスチャと定数の2つ
-	descTblRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);// 定数[b0] 座標変換用
-	descTblRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);// 定数[b1] マテリアル用
-	descTblRange[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);// テクスチャ4つ
+	CD3DX12_DESCRIPTOR_RANGE descTblRanges[4] = {};// テクスチャと定数の2つ
+	descTblRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);// 定数[b0] 座標変換用
+	descTblRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);//定数[b1](ワールド、ボーン用)
+	descTblRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2);//定数[b2](マテリアル用)
+	descTblRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);// テクスチャ4つ
 
-	CD3DX12_ROOT_PARAMETER rootparam[2] = {};
-	rootparam[0].InitAsDescriptorTable(1, &descTblRange[0]);
-	rootparam[1].InitAsDescriptorTable(2, &descTblRange[1]);
+	CD3DX12_ROOT_PARAMETER rootparam[3] = {};
+	rootparam[0].InitAsDescriptorTable(1, &descTblRanges[0]);//ビュープロジェクション変換
+	rootparam[1].InitAsDescriptorTable(1, &descTblRanges[1]);//ワールド・ボーン変換
+	rootparam[2].InitAsDescriptorTable(2, &descTblRanges[2]);//マテリアル周り
 
 	CD3DX12_STATIC_SAMPLER_DESC samplerDesc[2] = {};
 	samplerDesc[0].Init(0);
-	samplerDesc[1].Init(1, D3D12_FILTER_ANISOTROPIC,
-		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
-		D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+	samplerDesc[1].Init(1, D3D12_FILTER_ANISOTROPIC,D3D12_TEXTURE_ADDRESS_MODE_CLAMP,D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
 
 	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
-	rootSignatureDesc.Init(
-		2, rootparam,
-		2, samplerDesc,
-		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+	rootSignatureDesc.Init(3, rootparam, 2, samplerDesc, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 	ComPtr<ID3DBlob> rootSigBlob = nullptr;
 	ComPtr<ID3DBlob> errorBlob = nullptr;
@@ -211,7 +213,6 @@ ComPtr<ID3D12PipelineState> PMDRenderer::CreateBasicGraphicsPipeline(
 	gpipeline.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 	gpipeline.RasterizerState.CullMode = D3D12_CULL_MODE_NONE; // カリングしない
 
-	//深度ステンシル
 	gpipeline.DepthStencilState.DepthEnable = true; // 深度バッファーを使う
 	gpipeline.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL; // 書き込む
 	gpipeline.DepthStencilState.DepthFunc =
@@ -244,6 +245,7 @@ PMDRenderer::PMDRenderer(Dx12Wrapper& dx12):_dx12(dx12)
 {
 	ID3D12Device* dev = dx12.Device().Get();
 
+	// ディフォルトテクスチャ生成
 	_whiteTex = CreateWhiteTexture(dev);
 	_blackTex = CreateBlackTexture(dev);
 	_gradTex = CreateGrayGradationTexture(dev);

@@ -16,7 +16,7 @@ static void DebugOutputFormatString(const char* format, ...)
 #ifdef _DEBUG
 	va_list valist;
 	va_start(valist, format);
-	printf(format, valist);
+	vprintf_s(format, valist);
 	va_end(valist);
 #endif
 }
@@ -106,18 +106,17 @@ void Application::Run()
 			DispatchMessage(&msg);
 		}
 
+		_pmdActor->Update();
+
 		_dx12->BeginDraw();
 
 		auto _cmdList = _dx12->CommandList();
 		_cmdList->SetPipelineState(_pmdRenderer->GetPipelineState());
-
 		_cmdList->SetGraphicsRootSignature(_pmdRenderer->GetRootSignature());
-
-		_cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 		_dx12->ApplySceneDescHeap();
 
-		_pmdActor->Update();
+		_cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		_pmdActor->Draw();
 
 		_dx12->EndDraw();
@@ -129,7 +128,6 @@ void Application::Terminate()
 	//もうクラス使わんから登録解除
 	UnregisterClass(_windowClass.lpszClassName, _windowClass.hInstance);
 }
-
 
 Application::Application()
 {

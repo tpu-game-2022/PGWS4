@@ -16,11 +16,6 @@ private:
 	PMDRenderer& _renderer;
 	Dx12Wrapper& _dx12;
 
-	// 描画状態の設定
-	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _materialDescHeap = nullptr;
-//	Microsoft::WRL::ComPtr<ID3D12Resource> _transformMat = nullptr;//座標変換行列(今はワールドのみ)
-//	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _transformHeap = nullptr;//座標変換ヒープ
-
 	// マテリアルデータ
 	struct MaterialForHlsl// シェーダー側に投げられるマテリアルデータ
 	{
@@ -51,19 +46,7 @@ private:
 	std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> _sphResources;
 	std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> _spaResources;
 	std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> _toonResources;
-	Microsoft::WRL::ComPtr< ID3D12DescriptorHeap> _materialHeap = nullptr;//マテリアルヒープ(5個ぶん)
-
-
-//	struct Transform {
-		//内部に持ってるXMMATRIXメンバが16バイトアライメントであるため
-		//Transformをnewする際には16バイト境界に確保する
-//		void* operator new(size_t size);
-//		DirectX::XMMATRIX world;
-//	};
-//	Transform _transform;
-//	Transform* _mappedTransform = nullptr;
-//	Microsoft::WRL::ComPtr<ID3D12Resource> _transformBuff = nullptr;
-
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _materialDescHeap = nullptr;//マテリアルヒープ(5個ぶん)
 
 	//頂点
 	Microsoft::WRL::ComPtr<ID3D12Resource> _vertBuff = nullptr;
@@ -71,12 +54,28 @@ private:
 	D3D12_VERTEX_BUFFER_VIEW _vbView = {};
 	D3D12_INDEX_BUFFER_VIEW _ibView = {};
 
-	HRESULT LoadPMDFile(const char* path);//PMDファイルのロード
-	D3D12_CONSTANT_BUFFER_VIEW_DESC CreateMaterialData();//読み込んだマテリアルをもとにマテリアルバッファを作成
-	void CreateMaterialAndTextureView(D3D12_CONSTANT_BUFFER_VIEW_DESC& matCBVDesc);//マテリアル＆テクスチャのビューを作成
-
+	// 座標変換
+	struct Transform {
+		//内部に持ってるXMMATRIXメンバが16バイトアライメントであるため
+		//Transformをnewする際には16バイト境界に確保する
+		void* operator new(size_t size);
+		DirectX::XMMATRIX world;
+	};
+	Transform _transform;
+	Transform* _mappedTransform = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12Resource> _transformBuff = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12Resource> _transformMat = nullptr;//座標変換行列(今はワールドのみ)
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _transformHeap = nullptr;//座標変換ヒープ
 
 	float _angle;//テスト用Y軸回転
+
+public:
+	// 初期化の部分処理
+	HRESULT LoadPMDFile(const char* path);//PMDファイルのロード
+	void CreateMaterialData();//読み込んだマテリアルをもとにマテリアルバッファを作成
+	void CreateMaterialAndTextureView();//マテリアル＆テクスチャのビューを作成
+	void CreateTransformView();
+
 public:
 	PMDActor(const char* filepath, PMDRenderer& renderer);
 	~PMDActor();

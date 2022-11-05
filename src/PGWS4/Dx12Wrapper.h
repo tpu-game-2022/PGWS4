@@ -11,8 +11,6 @@
 class Dx12Wrapper
 {
 private:
-	unsigned int _screen_size[2];
-
 	// DirectX12 システム
 	Microsoft::WRL::ComPtr<ID3D12Device> _dev = nullptr;
 	Microsoft::WRL::ComPtr<IDXGIFactory6> _dxgiFactory = nullptr;
@@ -26,8 +24,7 @@ private:
 	UINT64 _fenceVal = 0;
 
 	// 画面スクリーン
-	unsigned int _window_width = 1280;
-	unsigned int _window_height = 720;
+	unsigned int _screen_size[2];
 	Microsoft::WRL::ComPtr<ID3D12Resource> _depthBuffer = nullptr;
 	std::vector<ID3D12Resource*> _backBuffers;//バックバッファ
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _rtvHeaps = nullptr;//レンダーターゲット用デスクリプタヒープ
@@ -38,20 +35,15 @@ private:
 
 	// リソース管理
 	std::map<std::string, Microsoft::WRL::ComPtr<ID3D12Resource>> _textureTable;
-	using LoadLambda_t = std::function<HRESULT(const std::wstring& path,
-		DirectX::TexMetadata*, DirectX::ScratchImage&)>;
+	using LoadLambda_t = std::function<HRESULT(const std::wstring& path, DirectX::TexMetadata*, DirectX::ScratchImage&)>;
 	std::map<std::string, LoadLambda_t> _loadLambdaTable;
 
-
-
-	//シーンを構成するバッファまわり
-	DirectX::XMMATRIX _worldMat;
+	//シーン情報
 	DirectX::XMMATRIX _viewMat;
 	DirectX::XMMATRIX _projMat;
 
 	struct SceneData
 	{
-		DirectX::XMMATRIX world; // ワールド行列
 		DirectX::XMMATRIX view; // ビュー行列
 		DirectX::XMMATRIX proj; // プロジェクション行列
 		DirectX::XMFLOAT3 eye; // 視点座標
@@ -60,9 +52,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> _sceneConstBuff = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _sceneDescHeap = nullptr;
 
-
-
 private:
+	// 初期化の部分処理
 	static Microsoft::WRL::ComPtr<IDXGIFactory6> InitializeGraphicsInterface();
 	static Microsoft::WRL::ComPtr<ID3D12Device> InitializeDevice(IDXGIFactory6* dxgiFactory);
 	static void InitializeCommand(Microsoft::WRL::ComPtr<ID3D12CommandAllocator>& cmdAllocator,
@@ -79,7 +70,6 @@ private:
 	void InitializeMatrixes();
 	void CreateSceneView();
 
-	// 初期化の部分処理
 	Microsoft::WRL::ComPtr<ID3D12Resource> LoadTextureFromFile(const char* texPath);
 	void InitializeTextureLoaderTable(std::map<std::string, LoadLambda_t>& loadLambdaTable);
 
@@ -91,7 +81,7 @@ public:
 	void BeginDraw();	// フレーム全体の描画準備
 	void EndDraw();		// フレーム全体の片付け
 
-	void ApplySceneDescHeap();
+	void ApplySceneDescHeap();// ビュー行列等をシェーダに設定
 
 	// その他、公開するメソッド
 	Microsoft::WRL::ComPtr<ID3D12Device> Device() { return _dev; }//デバイス
@@ -100,9 +90,3 @@ public:
 	///テクスチャパスから必要なテクスチャバッファへのポインタを返す
 	Microsoft::WRL::ComPtr<ID3D12Resource> GetTextureByPath(const char* texpath);
 };
-
-
-//Microsoft::WRL::ComPtr<IDXGISwapChain4> Swapchain();//スワップチェイン
-
-//void SetScene();
-
