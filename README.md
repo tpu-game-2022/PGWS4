@@ -29,4 +29,9 @@
 
 ![DX12テスト 2022_10_31 18_50_38](https://user-images.githubusercontent.com/71632844/198985493-ef0487f3-241c-49d2-8f77-db4ddbd86c74.png)
 
+# 第7回課題 結果画像
+テクスチャ―が回るようにしました。
+
+![DX12テスト 2022_11_07 17_52_30](https://user-images.githubusercontent.com/71632844/200271796-2391cb2e-ae68-4698-893f-6fe32de45f5a.png)
+
 
