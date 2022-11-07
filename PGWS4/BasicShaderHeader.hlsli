@@ -1,9 +1,13 @@
- //’¸“_ƒVƒF[ƒ_[‚©‚çƒsƒNƒZƒ‹ƒVƒF[ƒ_[‚Ö‚Ì‚â‚èæ‚è‚Éd—l‚·‚é\‘¢‘Ì
+ //é ‚ç‚¹ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã‹ã‚‰ãƒ”ã‚¯ã‚»ãƒ«ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã¸ã®ã‚„ã‚Šå–ã‚Šã«ä»•æ§˜ã™ã‚‹æ§‹é€ ä½“
 struct Output
 {
-	float4 svpos:SV_POSITION; //ƒVƒXƒeƒ€—p’¸“_À•W 
-	float2 uv:TEXCOORD; // uv’l
+	float4 svpos:SV_POSITION; //ã‚·ã‚¹ãƒ†ãƒ ç”¨é ‚ç‚¹åº§æ¨™ 
+	float2 uv:TEXCOORD; // uvå€¤
 };
 
-Texture2D<float4> tex : register(t0); //0”ÔƒXƒƒbƒg‚Éİ’è‚³‚ê‚½ƒeƒNƒXƒ`ƒƒ
-SamplerState smp : register(s0); //0”ÔƒXƒƒbƒg‚Éİ’è‚³‚ê‚½ƒTƒ“ƒvƒ‰[
+Texture2D<float4> tex : register(t0); //0ç•ªã‚¹ãƒ­ãƒƒãƒˆã«è¨­å®šã•ã‚ŒãŸãƒ†ã‚¯ã‚¹ãƒãƒ£
+SamplerState smp : register(s0); //0ç•ªã‚¹ãƒ­ãƒƒãƒˆã«è¨­å®šã•ã‚ŒãŸã‚µãƒ³ãƒ—ãƒ©ãƒ¼
+
+cbuffer cbuff0:register(b0)
+{
+	matrix mat;
