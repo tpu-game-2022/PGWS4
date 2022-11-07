@@ -7,6 +7,7 @@
 #include <DirectXMath.h>
 #include <vector>
 #include <string>
+#include <math.h>
 #include <d3dcompiler.h>
 #include <DirectXTex.h>
 #ifdef _DEBUG
@@ -257,32 +258,25 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	};
 
 	Vertex vertices[] = {
-		{{-0.4f, -0.7f, 0.0f},{0.0f, 1.0f}}, // 左下
-		{{-0.4f, +0.7f, 0.0f},{0.0f, 0.0f}}, // 左上
-		{{+0.4f, -0.7f, 0.0f},{1.0f, 1.0f}}, // 右下
-		{{+0.4f, +0.7f, 0.0f},{1.0f, 0.0f}}, // 右上
-
-		{{-0.95f, -0.4f, 0.0f},{0.0f, 1.0f}}, // 左下
-		{{-0.95f, +0.4f, 0.0f},{0.0f, 0.0f}}, // 左上
-		{{-0.5f, -0.4f, 0.0f},{1.0f, 1.0f}}, // 右下
-		{{-0.5f, +0.4f, 0.0f},{1.0f, 0.0f}}, // 右上
+		{{-1.0f, -1.0f, 2.0f},{0.0f, 1.0f}}, // 左下
+		{{-1.0f, +1.0f, 2.0f},{0.0f, 0.0f}}, // 左上
+		{{+1.0f, -1.0f, 2.0f},{1.0f, 1.0f}}, // 右下
+		{{+1.0f, +1.0f, 2.0f},{1.0f, 0.0f}}, // 右上
 	};
 
 	unsigned short indices[] = {
 		0, 1, 2,
-		2, 1, 3,
-		4,5,6,
-		6,5,7,
+		2, 1, 3
 	};
 
-	auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	auto oldHeapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	auto resourcepDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertices));
 
 	ID3D12Resource* idxBuff = nullptr;
 	// 設定は、バッファーのサイズ以外、頂点バッファーの設定を使いまわしてよい
 	resourcepDesc.Width = sizeof(indices);
 	result = _dev->CreateCommittedResource(
-		&heapProp,
+		&oldHeapProp,
 		D3D12_HEAP_FLAG_NONE,
 		&resourcepDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
@@ -304,7 +298,7 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	ID3D12Resource* vertBuff = nullptr;
 
 	result = _dev->CreateCommittedResource(
-		&heapProp, // UPLOAD ヒープとして
+		&oldHeapProp, // UPLOAD ヒープとして
 		D3D12_HEAP_FLAG_NONE,
 		&resourcepDesc, // サイズに応じて適切な設定をしてくれる
 		D3D12_RESOURCE_STATE_GENERIC_READ,
@@ -431,22 +425,31 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
 	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
-	D3D12_DESCRIPTOR_RANGE descTblRange = {};
+	D3D12_DESCRIPTOR_RANGE descTblRange[2] = {};
 
-	descTblRange.NumDescriptors = 1; // テクスチャ1 つ
-	descTblRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV; // 種別はテクスチャ
-	descTblRange.BaseShaderRegister = 0; // 0 番スロットから
-	descTblRange.OffsetInDescriptorsFromTableStart =
+	// テクスチャ―用レジスター0 番
+	descTblRange[0].NumDescriptors = 1; // テクスチャ1 つ
+	descTblRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV; // 種別はテクスチャ
+	descTblRange[0].BaseShaderRegister = 0; // 0 番スロットから
+	descTblRange[0].OffsetInDescriptorsFromTableStart =
+		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	// 定数用レジスター0 番
+	descTblRange[1].NumDescriptors = 1; // 定数1 つ
+	descTblRange[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV; // 種別は定数
+	descTblRange[1].BaseShaderRegister = 0; // 0 番スロットから
+	descTblRange[1].OffsetInDescriptorsFromTableStart =
 		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 	D3D12_ROOT_PARAMETER rootparam = {};
+
 	rootparam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-	// ピクセルシェーダーから見える
-	rootparam.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-	// ディスクリプタレンジのアドレス
-	rootparam.DescriptorTable.pDescriptorRanges = &descTblRange;
+	// 配列の先頭アドレス
+	rootparam.DescriptorTable.pDescriptorRanges = descTblRange;
 	// ディスクリプタレンジ数
-	rootparam.DescriptorTable.NumDescriptorRanges = 1;
+	rootparam.DescriptorTable.NumDescriptorRanges = 2;
+	// すべてのシェーダーから見える
+	rootparam.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL; 
 
 	rootSignatureDesc.pParameters = &rootparam; // ルートパラメーターの先頭アドレス
 	rootSignatureDesc.NumParameters = 1; // ルートパラメーター数
@@ -508,9 +511,6 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	result = LoadFromWICFile(
 		L"img/textest.png", WIC_FLAGS_NONE,
 		&metadata, scratchImg);
-	/*result = LoadFromWICFile(
-		L"img/programar.png", WIC_FLAGS_NONE,
-		&metadata, scratchImg);*/
 
 	auto img = scratchImg.GetImage(0, 0, 0); // 生データ抽出
 
@@ -616,18 +616,18 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	//std::copy_n(img->pixels, img->slicePitch, mapforImg); // コピー
 	uploadbuff->Unmap(0, nullptr); // アンマップ
 
-	ID3D12DescriptorHeap* texDescHeap = nullptr;
+	ID3D12DescriptorHeap* basicDescHeap = nullptr;
 	D3D12_DESCRIPTOR_HEAP_DESC descHeapDesc = {};
 	// シェーダーから見えるように
 	descHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	// マスクは0
 	descHeapDesc.NodeMask = 0;
-	// ビューは今のところ1 つだけ
-	descHeapDesc.NumDescriptors = 1;
+	// SRC 1つと CBV 1つ
+	descHeapDesc.NumDescriptors = 2;
 	// シェーダーリソースビュー用
 	descHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	// 生成
-	result = _dev->CreateDescriptorHeap(&descHeapDesc, IID_PPV_ARGS(&texDescHeap));
+	result = _dev->CreateDescriptorHeap(&descHeapDesc, IID_PPV_ARGS(&basicDescHeap));
 
 	D3D12_RESOURCE_BARRIER BarrierDesc = {};
 	BarrierDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -680,6 +680,40 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 
 	_cmdList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
 
+	// 定数バッファー作成
+	XMMATRIX worldMat = XMMatrixRotationY(XM_PIDIV4);
+
+	XMFLOAT3 eye(0, 0, -5);
+	XMFLOAT3 target(0, 0, 0);
+	XMFLOAT3 up(0, 1, 0);
+
+	auto viewMat = XMMatrixLookAtLH(
+		XMLoadFloat3(&eye), XMLoadFloat3(&target), XMLoadFloat3(&up));
+
+	auto projMat = XMMatrixPerspectiveFovLH(
+		XM_PIDIV2, // 画角は90°
+		static_cast<float>(window_width)
+		/ static_cast<float>(window_height), // アスペクト比
+		1.0f, // 近いほう
+		10.0f // 遠いほう
+	);
+
+	ID3D12Resource* constBuff = nullptr;
+	auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(XMMATRIX) + 0xff) & ~0xff);
+	_dev->CreateCommittedResource(
+		&heapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&resDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&constBuff)
+	);
+
+	XMMATRIX* mapMatrix; // マップ先を示すポインター
+	result = constBuff->Map(0, nullptr, (void**)&mapMatrix); // マップ
+	//*mapMatrix = matrix; // 行列の内容をコピー
+
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Format = metadata.format;
 	srvDesc.Shader4ComponentMapping =
@@ -687,11 +721,27 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D; // 2D テクスチャ
 	srvDesc.Texture2D.MipLevels = 1; // ミップマップは使用しないので1
 
+	// デスクリプタの先頭ハンドルを取得しておく
+	auto basicHeapHandle = basicDescHeap->GetCPUDescriptorHandleForHeapStart();
+
 	_dev->CreateShaderResourceView(
 		texbuff, // ビューと関連付けるバッファー
 		&srvDesc, // 先ほど設定したテクスチャ設定情報
-		texDescHeap->GetCPUDescriptorHandleForHeapStart() // ヒープのどこに割り当てるか
+		basicHeapHandle // 先頭の場所を示すハンドル
 	);
+
+	// 次の場所に移動
+	basicHeapHandle.ptr +=
+		_dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+	cbvDesc.BufferLocation = constBuff->GetGPUVirtualAddress();
+	cbvDesc.SizeInBytes = static_cast<UINT>(constBuff->GetDesc().Width);
+
+	// 定数バッファービューの作成
+	_dev->CreateConstantBufferView(&cbvDesc, basicHeapHandle);
+
+	float angle = 0.0f;
 
 	while (true)
 	{
@@ -707,6 +757,13 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
+
+		angle += 1.0f;
+		if (angle >= 360.0f)
+			angle = 0;
+		//worldMat = XMMatrixRotationY(angle);
+		worldMat = XMMatrixTranslation(cos(angle * (XM_PI / 180)), 0, sin(angle * (XM_PI / 180)));
+		*mapMatrix = worldMat * viewMat * projMat;
 
 		// DirectX処理
 		// バックバッファのインデックスを取得
@@ -733,11 +790,11 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 		// ルートシグネチャのセット
 		_cmdList->SetGraphicsRootSignature(rootsignature);
 		// ディスクリプタヒープのセット
-		_cmdList->SetDescriptorHeaps(1, &texDescHeap);
+		_cmdList->SetDescriptorHeaps(1, &basicDescHeap);
 		// ルートパラメーターとディスクリプタヒープの関連付け
 		_cmdList->SetGraphicsRootDescriptorTable(
 			0, // ルートパラメーターインデックス
-			texDescHeap->GetGPUDescriptorHandleForHeapStart()); // ヒープアドレス
+			basicDescHeap->GetGPUDescriptorHandleForHeapStart()); // ヒープアドレス
 		// ビューポートとシザー矩形のセット
 		_cmdList->RSSetViewports(1, &viewport);
 		_cmdList->RSSetScissorRects(1, &scissorrect);
@@ -748,8 +805,6 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 		_cmdList->IASetIndexBuffer(&ibView);
 		// 描画(Draw)命令
 		_cmdList->DrawIndexedInstanced(6, 1, 0, 0, 0);
-		_cmdList->DrawIndexedInstanced(6, 1, 6, 0, 0);
-		//_cmdList->DrawInstanced(4, 1, 0, 0);
 
 		// 命令のクローズ
 		_cmdList->Close();
