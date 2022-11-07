@@ -66,13 +66,17 @@ void EnableDebugLayer()
 #endif // _DEBUG
 
 
+// [6] チャレンジ問題
+// ポリゴンを振り回してみよう
+void RevolutionPlatePoly(float* angle, XMMATRIX* worldMat);
+
 #ifdef _DEBUG
 int main()
 {
 
-    #else
-        int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
-	#endif // _DEBUG
+#else
+    int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+#endif // _DEBUG
 
 	/*DebugOutputFormatString("Show window test.");
 	getchar();
@@ -265,10 +269,10 @@ int main()
 
 	Vertex vertices[] =
 	{
-		{{-0.4f,-0.7f,0.0f},{0.0f,1.0f}},//左下
-		{{-0.4f,+0.7f,0.0f},{0.0f,0.0f}},//左上
-		{{+0.4f,-0.7f,0.0f},{1.0f,1.0f}},//右下
-		{{+0.4f,+0.7f,0.0f},{1.0f,0.0f}},//右上
+		{{-1.0f, -1.0f, 0.0f}, {0.0f, 1.0f}}, // 左下
+		{{-1.0f, +1.0f, 0.0f}, {0.0f, 0.0f}}, // 左上
+		{{+1.0f, -1.0f, 0.0f}, {1.0f, 1.0f}}, // 右下
+		{{+1.0f, +1.0f, 0.0f}, {1.0f, 0.0f}}, // 右上
 	};
 
 	ID3D12Resource* vertBuff = nullptr;
@@ -301,7 +305,6 @@ int main()
 	};
 
 	ID3D12Resource* idxBuff = nullptr;
-	// 設定は、バッファーのサイズ以外、頂点バッファーの設定を使い回してよい
 	resDescDx.Width = sizeof(indices);
 	result = _dev->CreateCommittedResource(
 		&heapPropDx,
@@ -438,25 +441,31 @@ int main()
 	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
 	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
-	D3D12_DESCRIPTOR_RANGE descTblRange = {};
-	descTblRange.NumDescriptors = 1; // テクスチャ1 つ
-	descTblRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV; // 種別はテクスチャ
-	descTblRange.BaseShaderRegister = 0; // 0 番スロットから
-	descTblRange.OffsetInDescriptorsFromTableStart =
+	D3D12_DESCRIPTOR_RANGE descTblRange[2] = {};   // テクスチャと定数の2つ
+
+	// テクスチャ用レジスター
+	descTblRange[0].NumDescriptors = 1; // テクスチャ1 つ
+	descTblRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV; // 種別はテクスチャ
+	descTblRange[0].BaseShaderRegister = 0; // 0 番スロットから
+	descTblRange[0].OffsetInDescriptorsFromTableStart =
+		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	// 定数用レジスター
+	descTblRange[1].NumDescriptors = 1; // テクスチャ1 つ
+	descTblRange[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;   // 種別は定数
+	descTblRange[1].BaseShaderRegister = 0; // 0 番スロットから
+	descTblRange[1].OffsetInDescriptorsFromTableStart =
 		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 	D3D12_ROOT_PARAMETER rootparam = {};
 	rootparam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-	// ピクセルシェーダーから見える
-	rootparam.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-	// ピクセルシェーダーから見える
-	rootparam.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-	// ディスクリプタレンジのアドレス
-	rootparam.DescriptorTable.pDescriptorRanges = &descTblRange;
+	// 配列先頭アドレス
+	rootparam.DescriptorTable.pDescriptorRanges = descTblRange;
 	// ディスクリプタレンジ数
-	rootparam.DescriptorTable.NumDescriptorRanges = 1;
+	rootparam.DescriptorTable.NumDescriptorRanges = 2;
+	// すべてのシェーダーから見える
+	rootparam.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-	// ルートシグネチャへの追加
 	rootSignatureDesc.pParameters = &rootparam; // ルートパラメーターの先頭アドレス
 	rootSignatureDesc.NumParameters = 1; // ルートパラメーター数
 
@@ -669,18 +678,51 @@ int main()
 	_cmdAllocator->Reset();//キューをクリア
 	_cmdList->Reset(_cmdAllocator, nullptr);
 
-	ID3D12DescriptorHeap* texDescHeap = nullptr;
+	XMMATRIX worldMat = XMMatrixRotationY(XM_PIDIV4);
+
+	XMFLOAT3 eye(0, 0, -5);
+	XMFLOAT3 target(0, 0, 0);
+	XMFLOAT3 up(0, 1, 0);
+
+	auto viewMat = XMMatrixLookAtLH(
+		XMLoadFloat3(&eye), XMLoadFloat3(&target), XMLoadFloat3(&up));
+
+	auto projMat = XMMatrixPerspectiveFovLH(
+		XM_PIDIV2,   // 画角は90°
+		static_cast<float>(window_width)
+		/ static_cast<float>(window_height),   // アスペクト比
+		1.0f,   // 近い方
+		10.0f   // 遠い方
+	);
+
+	ID3D12Resource* constBuff = nullptr;
+	auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(XMMATRIX) + 0xff) & ~0xff);
+	_dev->CreateCommittedResource(
+		&heapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&resDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&constBuff)
+	);
+
+	XMMATRIX* mapMatrix;   // マップ先を示すポンター
+	result = constBuff->Map(0, nullptr, (void**)&mapMatrix);   // マップ
+	*mapMatrix = worldMat * viewMat * projMat;   // 行列の内容をコピー
+
+	ID3D12DescriptorHeap* basicDescHeap = nullptr;
 	D3D12_DESCRIPTOR_HEAP_DESC descHeapDesc = {};
 	// シェーダーから見えるように
 	descHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	// マスクは0
 	descHeapDesc.NodeMask = 0;
-	// ビューは今のところ1 つだけ
-	descHeapDesc.NumDescriptors = 1;
+	// SRV 1つと CBV 1つ
+	descHeapDesc.NumDescriptors = 2;
 	// シェーダーリソースビュー用
 	descHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	// 生成
-	result = _dev->CreateDescriptorHeap(&descHeapDesc, IID_PPV_ARGS(&texDescHeap));
+	result = _dev->CreateDescriptorHeap(&descHeapDesc, IID_PPV_ARGS(&basicDescHeap));
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Format = metadata.format;
@@ -689,16 +731,32 @@ int main()
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;   // 2D テクスチャ
 	srvDesc.Texture2D.MipLevels = 1;   // ミップマップは使用しないので1
 
+	// ディスクリプタの先頭ハンドルを取得しておく
+	auto basicHeapHandle = basicDescHeap->GetCPUDescriptorHandleForHeapStart();
+
 	_dev->CreateShaderResourceView(
 		texbuff,   // ビューと関連付けるバッファー
 		&srvDesc,   // 先ほど設定したテクスチャ設定情報
-		texDescHeap->GetCPUDescriptorHandleForHeapStart() // ヒープのどこに割り当てるか
+		basicHeapHandle // ヒープのどこに割り当てるか
 	);
+
+	// 次の場所に移動
+	basicHeapHandle.ptr +=
+		_dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+	cbvDesc.BufferLocation = constBuff->GetGPUVirtualAddress();
+	cbvDesc.SizeInBytes = static_cast<UINT>(constBuff->GetDesc().Width);
+
+	// 定数バッファービューの作成
+	_dev->CreateConstantBufferView(&cbvDesc, basicHeapHandle);
 
 	// 画面色の初期値
 	float r = 0.0f;
 	float g = 0.0f;
 	float b = 0.3f;
+
+	float angle = 0.0f;
 
 	while (true)
 	{
@@ -714,6 +772,11 @@ int main()
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
+
+		// [6] チャレンジ問題
+		// ポリゴンを振り回してみよう
+		RevolutionPlatePoly(&angle, &worldMat);
+		*mapMatrix = worldMat * viewMat * projMat;
 
 		//DirectX処理
 		//バックバッファのインデックスを取得
@@ -743,10 +806,11 @@ int main()
 		// ルートシグネチャのセット
 		_cmdList->SetGraphicsRootSignature(rootsignature);
 		// ディスクリプタヒープの指定
-		_cmdList->SetDescriptorHeaps(1, &texDescHeap);
+		_cmdList->SetDescriptorHeaps(1, &basicDescHeap);
+
 		_cmdList->SetGraphicsRootDescriptorTable(
-			0, // ルートパラメーターインデックス
-			texDescHeap->GetGPUDescriptorHandleForHeapStart()); // ヒープアドレス
+			0,   // ルートパラメーターインデックス
+			basicDescHeap->GetGPUDescriptorHandleForHeapStart());   // ヒープアドレス
 
 		// ビューポートとシザー矩形のセット
 		_cmdList->RSSetViewports(1, &viewport);
@@ -797,4 +861,19 @@ int main()
 	UnregisterClass(w.lpszClassName, w.hInstance);
 
 	return 0;
+}
+
+// [6] チャレンジ問題
+// ポリゴンを振り回してみよう
+void RevolutionPlatePoly(float* angle, XMMATRIX* worldMat)
+{
+	// 回転に関わるパラメータ
+	float speed = 0.01f;
+	float radius = 3.0f;
+
+	// 公転処理
+	*angle += speed;
+	if (*angle > 360.0f) *angle = 0;
+	float radian = *angle * (XM_PI / 180.0f);
+	*worldMat = XMMatrixTranslation(cos(*angle) * radius, 0, sin(*angle) * radius);
 }
