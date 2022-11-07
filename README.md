@@ -14,7 +14,7 @@
 
 # [07] 第6章：行列による座標変換 / 5.回転アニメーションさせてみよう（11/7）  
 
-![DX12_テスト__2022-11-07_18-51-06_AdobeExpress](https://user-images.githubusercontent.com/103874162/200283259-541c1df3-c867-4a78-9280-4c578e8de406.gif)  
+![07_Animation_AdobeExpress](https://user-images.githubusercontent.com/103874162/200285065-851e40cb-1f95-4a76-b401-109db94e7e44.gif)
 
 
 # [05] 第5章：ポリゴンにテクスチャを貼り付ける / 10.ピクセルシェーダーのプログラムを変更（10/19）
