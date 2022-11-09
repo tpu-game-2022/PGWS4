@@ -34,4 +34,11 @@
 
 ![DX12テスト 2022_11_07 17_52_30](https://user-images.githubusercontent.com/71632844/200271796-2391cb2e-ae68-4698-893f-6fe32de45f5a.png)
 
+# 第8回課題 結果画像
+初音ミクの深度バッファーの内容まで処理を行いモデルを描画しました。
+
+![DX12テスト 2022_11_09 19_56_41](https://user-images.githubusercontent.com/71632844/200812727-59a2b808-3b2a-41d7-8999-ea6bec13f2d7.png)
+
+
+
 
