@@ -12,8 +12,4 @@
 次の授業の2日前（水曜日の授業であれば月曜日一杯）
 
 #
-
-
-
-https://user-images.githubusercontent.com/71998147/200018608-8ed4e172-ec4a-4130-b7c9-8c7063ee40a3.mp4
-
+![1109_rainbow_Miku](https://user-images.githubusercontent.com/71998147/200786388-bb4ba9ac-2ea0-447a-bf6f-cb5a9fc0278d.png)
