@@ -2,5 +2,7 @@
 
 float4 BasicPS(Output input) : SV_TARGET
 {
-	return float4(tex.Sample(smp, input.uv));
+	float3 light = normalize(float3(6, 1, -1));
+	float brightness = dot(-light, input.normal);
+	return float4(brightness, 153.0f / 255.0f, 119.0f / 255.0f, 1);
 }
