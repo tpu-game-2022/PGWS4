@@ -34,6 +34,10 @@
 ・画像が回転しました
 ![DX12 テスト  2022_11_02 18_04_55](https://user-images.githubusercontent.com/71679716/199449030-e01983b7-de00-4705-b35a-fbc9c49b0794.png)
 
+2022年11月9日
+・11月9日の講義分まで更新しました
+・ミクが表示されました
+![DX12 テスト  2022_11_09 18_07_53](https://user-images.githubusercontent.com/71679716/200788412-90d676c5-01fd-48d7-84da-1e4e17ea0ccb.png)
 
 
 # 締め切り
