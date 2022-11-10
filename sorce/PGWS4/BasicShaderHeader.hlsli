@@ -1,6 +1,7 @@
 struct Output
 {
 	float4 svpos:SV_POSITION;
+	float4 normal:NORMAL; //法線ベクトル
 	float2 uv:TEXCOORD;
 };
 
