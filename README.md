@@ -9,8 +9,7 @@
 
 # 結果画像
 
-![チャレンジ課題](https://user-images.githubusercontent.com/71791660/198915135-c524624e-2d27-4ba5-9811-03ea84a2b852.jpg)
-
+![進捗画像](https://user-images.githubusercontent.com/71791660/200138485-7115a7ce-9cf4-4752-99f1-3398c2de1a45.gif)
 
 # 締め切り
 次の授業の2日前（水曜日の授業であれば月曜日一杯）
