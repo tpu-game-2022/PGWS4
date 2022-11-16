@@ -39,6 +39,11 @@
 
 ![DX12テスト 2022_11_09 19_56_41](https://user-images.githubusercontent.com/71632844/200812727-59a2b808-3b2a-41d7-8999-ea6bec13f2d7.png)
 
+# 第9回課題 結果画像
+授業内で教えていただいたところまでマテリアルの設定を行い、チャレンジ課題の「ライトを動かしてみよう」の処理も入れました。
+
+https://user-images.githubusercontent.com/71632844/202159977-cbac4cee-3ea6-4810-8df7-161d7a98963e.mp4
+
 
 
 
