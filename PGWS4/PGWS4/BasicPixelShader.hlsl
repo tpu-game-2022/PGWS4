@@ -2,5 +2,7 @@
 
 float4 BasicPS(Output input) : SV_TARGET
 {
-	return float4(input.normal.xyz * 0.5 + 0.5, 1);
+	float3 light = normalize(float3(-cos(lightangle), -1, sin(lightangle)));
+	float brightness = dot(-light, input.normal);
+	return float4(brightness, brightness, brightness, 1) * diffuse;
 }
