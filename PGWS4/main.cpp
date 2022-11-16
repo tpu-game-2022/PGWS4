@@ -1,5 +1,4 @@
-﻿//グラデーションは別のファイルに移行しました。
-#include <Windows.h>
+﻿#include <Windows.h>
 #include <tchar.h>
 #include <d3d12.h>
 #include <dxgi1_6.h>
@@ -62,6 +61,8 @@ void EnableDebugLayer()
 int main()
 {
 #else
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+{
 #endif
 const unsigned int window_width = 1280;
 const unsigned int window_height = 720;
@@ -106,17 +107,25 @@ auto result = CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(&_dxgiF
 auto result = CreateDXGIFactory1(IID_PPV_ARGS(&_dxgiFactory));
 #endif
 
-std::vector<IDXGIAdapter*> adapters;
-
+std::vector <IDXGIAdapter*> adapters;
 IDXGIAdapter* tmpAdapter = nullptr;
-
+for (int i = 0;
+	_dxgiFactory->EnumAdapters(i, &tmpAdapter) != DXGI_ERROR_NOT_FOUND;
+	++i)
+{
+	adapters.push_back(tmpAdapter);
+}
 for (auto adpt : adapters)
 {
 	DXGI_ADAPTER_DESC adesc = {};
 	adpt->GetDesc(&adesc);
 	std::wstring strDesc = adesc.Description;
-
 	if (strDesc.find(L"NVIDIA") != std::string::npos)
+	{
+		tmpAdapter = adpt;
+		break;
+	}
+	else if (strDesc.find(L"Radeon") != std::string::npos)
 	{
 		tmpAdapter = adpt;
 		break;
@@ -124,7 +133,6 @@ for (auto adpt : adapters)
 }
 
 D3D_FEATURE_LEVEL featureLevel;
-
 for (auto lv : levels)
 {
 	if (D3D12CreateDevice(tmpAdapter, lv, IID_PPV_ARGS(&_dev)) == S_OK)
@@ -134,21 +142,18 @@ for (auto lv : levels)
 	}
 }
 
-result = _dev->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&_cmdAllocator));
-result = _dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, _cmdAllocator, nullptr, IID_PPV_ARGS(&_cmdList));
+result = _dev->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
+	IID_PPV_ARGS(&_cmdAllocator));
+result = _dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+	_cmdAllocator, nullptr,
+	IID_PPV_ARGS(&_cmdList));
 
 D3D12_COMMAND_QUEUE_DESC cmdQueueDesc = {};
-
 cmdQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 cmdQueueDesc.NodeMask = 0;
 cmdQueueDesc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
 cmdQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 result = _dev->CreateCommandQueue(&cmdQueueDesc, IID_PPV_ARGS(&_cmdQueue));
-
-HRESULT CreateSwapChainForHwnd(
-	IUnknown * pDevice, HWND hWnd,
-	const DXGI_SWAP_CHAIN_DESC1 * pDesc, const DXGI_SWAP_CHAIN_FULLSCREEN_DESC * pFullscreenDesc,
-	IDXGIOutput * pRestrictToOutput, IDXGISwapChain1 * *ppSwapChain);
 
 DXGI_SWAP_CHAIN_DESC1 swapchainDesc = {};
 swapchainDesc.Width = window_width;
@@ -163,8 +168,10 @@ swapchainDesc.Scaling = DXGI_SCALING_STRETCH;
 swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 swapchainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
 swapchainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
-result = _dxgiFactory->CreateSwapChainForHwnd(_cmdQueue, hwnd, &swapchainDesc,
-	nullptr, nullptr, (IDXGISwapChain1**)&_swapchain);
+result = _dxgiFactory->CreateSwapChainForHwnd(
+	_cmdQueue, hwnd,
+	&swapchainDesc, nullptr, nullptr,
+	(IDXGISwapChain1**)&_swapchain);
 
 D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
 heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
@@ -182,9 +189,8 @@ D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
 rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
-std::vector<ID3D12Resource*>_backBuffers(swcDesc.BufferCount);
-
-for (int idx = 0; idx < swcDesc.BufferCount; ++idx)
+std::vector<ID3D12Resource*> _backBuffers(swcDesc.BufferCount);
+for (UINT idx = 0; idx < swcDesc.BufferCount; ++idx)
 {
 	result = _swapchain->GetBuffer(idx, IID_PPV_ARGS(&_backBuffers[idx]));
 	D3D12_CPU_DESCRIPTOR_HANDLE handle
@@ -194,18 +200,16 @@ for (int idx = 0; idx < swcDesc.BufferCount; ++idx)
 	_dev->CreateRenderTargetView(_backBuffers[idx], &rtvDesc, handle);
 }
 
-ID3D12Fence* _fence = nullptr;
-UINT64 _fenceVal = 0;
-result = _dev->CreateFence(_fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_fence));
-
 D3D12_RESOURCE_DESC depthResDesc = {};
-depthResDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+depthResDesc.Dimension =
+D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 depthResDesc.Width = window_width;
 depthResDesc.Height = window_height;
 depthResDesc.DepthOrArraySize = 1;
 depthResDesc.Format = DXGI_FORMAT_D32_FLOAT;
 depthResDesc.SampleDesc.Count = 1;
-depthResDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+depthResDesc.Flags =
+D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL; 
 
 D3D12_HEAP_PROPERTIES depthHeapProp = {};
 depthHeapProp.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -235,11 +239,15 @@ D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
 dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
 dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
-
 _dev->CreateDepthStencilView(
 	depthBuffer,
 	&dsvDesc,
 	dsvHeap->GetCPUDescriptorHandleForHeapStart());
+
+ID3D12Fence* _fence = nullptr;
+UINT64 _fenceVal = 0;
+result = _dev->CreateFence(_fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_fence));
+
 
 ShowWindow(hwnd, SW_SHOW);
 
@@ -263,6 +271,21 @@ constexpr size_t pmdvertex_size = 38;
 unsigned int vertNum;
 fread(&vertNum, sizeof(vertNum), 1, fp);
 
+#pragma pack(1)
+struct PMDMaterial
+{
+	XMFLOAT3 diffuse;
+	float alpha;
+	float specularity;
+	XMFLOAT3 specular;
+	XMFLOAT3 ambient;
+	unsigned char toonIdx;
+	unsigned char edgeFlg;
+	unsigned int indicesNum;
+	char texFilePath[20];
+};
+#pragma pack()
+
 #pragma pack(push, 1)
 struct PMD_VERTEX
 {
@@ -275,6 +298,7 @@ struct PMD_VERTEX
 	uint16_t dummy;
 };
 #pragma pack(pop)
+
 std::vector<PMD_VERTEX> vertices(vertNum);
 for (unsigned int i = 0; i < vertNum; i++)
 {
@@ -303,7 +327,7 @@ vbView.BufferLocation = vertBuff->GetGPUVirtualAddress();
 vbView.SizeInBytes = static_cast<UINT>(vertices.size() * sizeof(PMD_VERTEX));
 vbView.StrideInBytes = sizeof(vertices[0]);
 
-unsigned int indicesNum;//インデックス数
+unsigned int indicesNum;
 fread(&indicesNum, sizeof(indicesNum), 1, fp);
 
 std::vector<unsigned short> indices;
@@ -330,6 +354,109 @@ D3D12_INDEX_BUFFER_VIEW ibView = {};
 ibView.BufferLocation = idxBuff->GetGPUVirtualAddress();
 ibView.Format = DXGI_FORMAT_R16_UINT;
 ibView.SizeInBytes = indices.size() * sizeof(indices[0]);
+
+unsigned int materialNum;
+fread(&materialNum, sizeof(materialNum), 1, fp);
+
+std::vector<PMDMaterial> pmdMaterials(materialNum);
+
+fread(
+	pmdMaterials.data(),
+	pmdMaterials.size() * sizeof(PMDMaterial),
+	1,
+	fp);
+
+
+struct MaterialForHlsl
+{
+	XMFLOAT3 diffuse;
+	float alpha;
+	XMFLOAT3 specular;
+	float specularity;
+	XMFLOAT3 ambient;
+};
+
+struct AdditionalMaterial
+{
+	std::string texPath;
+	int toonIdx;
+	bool edgeFlg;
+};
+
+struct Material
+{
+	unsigned int indicesNum;
+	MaterialForHlsl material;
+	AdditionalMaterial additional;
+};
+
+std::vector<Material> materials(pmdMaterials.size());
+
+for (int i = 0; i < pmdMaterials.size(); ++i)
+{
+	materials[i].indicesNum = pmdMaterials[i].indicesNum;
+	materials[i].material.diffuse = pmdMaterials[i].diffuse;
+	materials[i].material.alpha = pmdMaterials[i].alpha;
+	materials[i].material.specular = pmdMaterials[i].specular;
+	materials[i].material.specularity = pmdMaterials[i].specularity;
+	materials[i].material.ambient = pmdMaterials[i].ambient;
+}
+
+auto materialBuffSize = sizeof(MaterialForHlsl);
+materialBuffSize = (materialBuffSize + 0xff) & ~0xff;
+
+ID3D12Resource* materialBuff = nullptr;
+
+const D3D12_HEAP_PROPERTIES heapPropMat =
+CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+const D3D12_RESOURCE_DESC resDescMat = CD3DX12_RESOURCE_DESC::Buffer(
+	materialBuffSize * materialNum);
+result = _dev->CreateCommittedResource(
+	&heapPropMat,
+	D3D12_HEAP_FLAG_NONE,
+	&resDescMat,
+	D3D12_RESOURCE_STATE_GENERIC_READ,
+	nullptr,
+	IID_PPV_ARGS(&materialBuff)
+);
+
+char* mapMaterial = nullptr;
+result = materialBuff->Map(0, nullptr, (void**)&mapMaterial);
+for (auto& m : materials) {
+	*((MaterialForHlsl*)mapMaterial) = m.material;
+	mapMaterial += materialBuffSize;
+}
+materialBuff->Unmap(0, nullptr);
+
+ID3D12DescriptorHeap* materialDescHeap = nullptr;
+
+D3D12_DESCRIPTOR_HEAP_DESC matDescHeapDesc = {};
+matDescHeapDesc.Flags =
+D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+matDescHeapDesc.NodeMask = 0;
+matDescHeapDesc.NumDescriptors = materialNum;
+matDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+
+result = _dev->CreateDescriptorHeap(
+	&matDescHeapDesc, IID_PPV_ARGS(&materialDescHeap));
+
+D3D12_CONSTANT_BUFFER_VIEW_DESC matCBVDesc = {};
+
+matCBVDesc.BufferLocation =
+materialBuff->GetGPUVirtualAddress();
+matCBVDesc.SizeInBytes =
+static_cast<UINT>(materialBuffSize);
+
+auto matDescHeapH = materialDescHeap->GetCPUDescriptorHandleForHeapStart();
+
+for (UINT i = 0; i < materialNum; ++i)
+{
+	_dev->CreateConstantBufferView(&matCBVDesc, matDescHeapH);
+	matDescHeapH.ptr +=
+		_dev->GetDescriptorHandleIncrementSize(
+			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	matCBVDesc.BufferLocation += materialBuffSize;
+}
 
 fclose(fp);
 
@@ -457,7 +584,7 @@ gpipeline.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
 gpipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 
 gpipeline.NumRenderTargets = 1;
-gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 
 gpipeline.SampleDesc.Count = 1;
 gpipeline.SampleDesc.Quality = 0;
@@ -467,30 +594,35 @@ rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_
 
 D3D12_DESCRIPTOR_RANGE descTblRange[2] = {};
 descTblRange[0].NumDescriptors = 1;
-descTblRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+descTblRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
 descTblRange[0].BaseShaderRegister = 0;
 descTblRange[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 descTblRange[1].NumDescriptors = 1;
 descTblRange[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-descTblRange[1].BaseShaderRegister = 0;
+descTblRange[1].BaseShaderRegister = 1;
 descTblRange[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-D3D12_ROOT_PARAMETER rootparam = {};
-rootparam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-rootparam.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-rootparam.DescriptorTable.pDescriptorRanges = descTblRange;
-rootparam.DescriptorTable.NumDescriptorRanges = 2;
+D3D12_ROOT_PARAMETER rootparam[2] = {};
+rootparam[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+rootparam[0].DescriptorTable.pDescriptorRanges = descTblRange;
+rootparam[0].DescriptorTable.NumDescriptorRanges = 1;
+rootparam[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-rootSignatureDesc.pParameters = &rootparam;
-rootSignatureDesc.NumParameters = 1;
+rootparam[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+rootparam[1].DescriptorTable.pDescriptorRanges = &descTblRange[1];
+rootparam[1].DescriptorTable.NumDescriptorRanges = 1;
+rootparam[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+rootSignatureDesc.pParameters = rootparam;
+rootSignatureDesc.NumParameters = 2;
 
 D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
 samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
 samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
 samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
 samplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
-samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
 samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
 samplerDesc.MinLOD = 0.0f;
 samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -681,7 +813,13 @@ if (_fence->GetCompletedValue() != _fenceVal)
 _cmdAllocator->Reset();
 _cmdList->Reset(_cmdAllocator, nullptr);
 
-//今日
+
+struct MatricesData
+{
+	XMMATRIX world; // モデル本体を回転させたり移動させたりする行列
+	XMMATRIX viewproj; // ビューとプロジェクション合成行列
+};
+
 XMMATRIX worldMat = XMMatrixRotationY(XM_PIDIV4);
 
 //matrix.r[0].m128_f32[0] = +2.0f / window_width;
@@ -707,7 +845,7 @@ auto projMat = XMMatrixPerspectiveFovLH(
 
 ID3D12Resource* constBuff = nullptr;
 auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(XMMATRIX) + 0xff) & ~0xff);
+resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(MatricesData) + 0xff) & ~0xff);
 _dev->CreateCommittedResource(
 	&heapProp,
 	D3D12_HEAP_FLAG_NONE,
@@ -717,35 +855,21 @@ _dev->CreateCommittedResource(
 	IID_PPV_ARGS(&constBuff)
 );
 
-XMMATRIX* mapMatrix;
+MatricesData* mapMatrix;
 result = constBuff->Map(0, nullptr, (void**)&mapMatrix);
 //*mapMatrix = matrix;
+mapMatrix->world = worldMat;
+mapMatrix->viewproj = viewMat * projMat;
 
 ID3D12DescriptorHeap* basicDescHeap = nullptr;
 D3D12_DESCRIPTOR_HEAP_DESC descHeapDesc = {};
 descHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 descHeapDesc.NodeMask = 0;
-descHeapDesc.NumDescriptors = 2;
+descHeapDesc.NumDescriptors = 1;
 descHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-
 result = _dev->CreateDescriptorHeap(&descHeapDesc, IID_PPV_ARGS(&basicDescHeap));
 
-D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-srvDesc.Format = metadata.format;
-srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-srvDesc.Texture2D.MipLevels = 1;
-
 auto basicHeapHandle = basicDescHeap->GetCPUDescriptorHandleForHeapStart();
-
-_dev->CreateShaderResourceView(
-	texbuff,
-	&srvDesc,
-	basicHeapHandle
-);
-
-basicHeapHandle.ptr +=
-_dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
 cbvDesc.BufferLocation = constBuff->GetGPUVirtualAddress();
@@ -772,7 +896,8 @@ while (true)
 	
 	angle += 0.1f;
 	worldMat = XMMatrixRotationY(angle);
-	*mapMatrix = worldMat * viewMat * projMat;
+	mapMatrix->world = worldMat;
+	mapMatrix->viewproj = viewMat * projMat;
 
 	auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
 
@@ -802,6 +927,11 @@ while (true)
 	_cmdList->SetGraphicsRootDescriptorTable(0,
 		basicDescHeap->GetGPUDescriptorHandleForHeapStart());
 
+	_cmdList->SetDescriptorHeaps(1, &materialDescHeap);
+	_cmdList->SetGraphicsRootDescriptorTable(
+		1,
+		materialDescHeap->GetGPUDescriptorHandleForHeapStart());
+
 	_cmdList->RSSetViewports(1, &viewport);
 	_cmdList->RSSetScissorRects(1, &scissorrect);
 
@@ -809,6 +939,31 @@ while (true)
 
 	_cmdList->IASetVertexBuffers(0, 1, &vbView);
 	_cmdList->IASetIndexBuffer(&ibView);
+
+	_cmdList->SetDescriptorHeaps(1, &materialDescHeap);
+	auto materialH = materialDescHeap->
+		GetGPUDescriptorHandleForHeapStart();
+
+	unsigned int idxOffset = 0;
+
+	for (auto& m : materials)
+	{
+		_cmdList->SetGraphicsRootDescriptorTable(1, materialH);
+
+		_cmdList->DrawIndexedInstanced(
+			m.indicesNum, 1, idxOffset, 0, 0);
+
+		materialH.ptr +=
+			_dev->GetDescriptorHandleIncrementSize(
+				D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+		idxOffset += m.indicesNum;
+	}
+
+	BarrierDesc = CD3DX12_RESOURCE_BARRIER::Transition(
+		_backBuffers[bbIdx], D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PRESENT);
+	_cmdList->ResourceBarrier(1, &BarrierDesc);
 
 	_cmdList->DrawIndexedInstanced(indicesNum, 1, 0, 0, 0);
 
