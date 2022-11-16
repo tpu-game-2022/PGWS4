@@ -26,5 +26,8 @@
 # 11月9日(水)までの授業の進捗
 ![miku](https://user-images.githubusercontent.com/71643403/200813309-d053e9b4-1e1c-4ce7-a635-b324a109120b.gif)
 
+# 11月16日(水)までの授業の進捗
+![miku](https://user-images.githubusercontent.com/71643403/202171398-2ca2ba2c-2f58-4ad6-adc0-dde6e6a7156c.gif)
+
 # 締め切り
 次の授業の2日前（水曜日の授業であれば月曜日一杯）
