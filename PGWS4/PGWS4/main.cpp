@@ -72,10 +72,10 @@ void RevolutionPlatePoly(float* angle, XMMATRIX* worldMat);
 
 // [7] チャレンジ問題
 // ライトの向きを動かしてみよう
-void MoveLight(float* angile);
+void MoveLight(float* lightAngle);
 
 // カメラ
-void UpdateCamera(XMMATRIX* viewMat);
+void UpdateCamera(XMMATRIX* viewMat, float* cameraAngle);
 
 #ifdef _DEBUG
 int main()
@@ -87,9 +87,9 @@ int main()
 
     /*DebugOutputFormatString("Show window test.");
     getchar();
-	return 0;*/
+    return 0;*/
 
-	const unsigned int window_width = 1280;
+    const unsigned int window_width = 1280;
 	const unsigned int window_height = 720;
 
 	ID3D12Device* _dev = nullptr;
@@ -136,11 +136,11 @@ int main()
 		void** ppDevice);
 
 #ifdef _DEBUG
-	// デバッグレイヤーをオンに
-	EnableDebugLayer();
+    // デバッグレイヤーをオンに
+    EnableDebugLayer();
 #endif // _DEBUG
 
-	D3D_FEATURE_LEVEL levels[] =
+    D3D_FEATURE_LEVEL levels[] =
 	{
 		D3D_FEATURE_LEVEL_12_1,
 		D3D_FEATURE_LEVEL_12_0,
@@ -149,12 +149,12 @@ int main()
 	};
 
 #ifdef _DEBUG
-	auto result = CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG,IID_PPV_ARGS(&_dxgiFactory));
+    auto result = CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(&_dxgiFactory));
 #else
-	auto result = CreateDXGIFactory1(IID_PPV_ARGS(&_dxgiFactory));
+    auto result = CreateDXGIFactory1(IID_PPV_ARGS(&_dxgiFactory));
 #endif // _DEBUG
 
-	// アダプターの列挙用
+    // アダプターの列挙用
 	std::vector <IDXGIAdapter*> adapters;
 	// ここに特定の名前を持つアダプターオブジェクトが入る
 	IDXGIAdapter* tmpAdapter = nullptr;
@@ -170,7 +170,7 @@ int main()
 		adpt->GetDesc(&adesc);   // アダプターの説明オブジェクト取得
 		std::wstring strDesc = adesc.Description;
 		// 探したいアダプターの名前を確認
-		if (strDesc.find(L"NVIDA"))
+		if (strDesc.find(L"NVIDIA") != std::string::npos)
 		{
 			tmpAdapter = adpt;
 			break;
@@ -261,7 +261,7 @@ int main()
 	}
 
 
-	// 深度バッファーの作成
+    // 深度バッファーの作成
 	D3D12_RESOURCE_DESC depthResDesc = {};
 	depthResDesc.Dimension =
 		D3D12_RESOURCE_DIMENSION_TEXTURE2D;   // 2 次元のテクスチャデータ
@@ -339,8 +339,27 @@ int main()
 	unsigned int vertNum;   // 頂点数を取得
 	fread(&vertNum, sizeof(vertNum), 1, fp);
 
+    #pragma pack(1)   // ここから1バイトパッキングとなり、アライメントは発生しない
+	struct PMDMaterial
+	{
+		XMFLOAT3 diffuse;        // ディフューズ色
+		float alpha;             // ディフューズα
+		float specularity;       // スペキュラの強さ（乗算値）
+		XMFLOAT3 specular;       // スペキュラ色
+		XMFLOAT3 ambient;        // アンビエント色
+		unsigned char toonIdx;   // トゥーン番号（後述）
+		unsigned char edgeFlg;   // マテリアル毎の輪郭線フラグ
+
+		// 注意：ここに2 バイトのパディングがある！！
+		
+		unsigned int indicesNum;   // このマテリアルが割り当てられる
+								   // インデックス数（後述）
+		char texFilePath[20];      // テクスチャファイルパス＋α（後述）
+	};   // 70バイトのはずだが、パディングが発生するため72 バイトになる。
+    #pragma pack()   // パッキング指定を解除（デフォルトに戻す）
+
 #pragma pack(push, 1)
-	struct PMD_VERTEX
+    struct PMD_VERTEX
 	{
 		XMFLOAT3 pos;
 		XMFLOAT3 normal;
@@ -351,7 +370,7 @@ int main()
 		uint16_t dummy;
 	};
 #pragma pack(pop)
-	std::vector<PMD_VERTEX> vertices(vertNum);   // バッファーの確保
+    std::vector<PMD_VERTEX> vertices(vertNum);   // バッファーの確保
 	for (unsigned int i = 0; i < vertNum; i++)
 	{
 		fread(&vertices[i], pmdvertex_size, 1, fp);
@@ -385,9 +404,8 @@ int main()
 	indices.resize(indicesNum);
 	fread(indices.data(), indices.size() * sizeof(indices[0]), 1, fp);
 
-	fclose(fp);
-
 	ID3D12Resource* idxBuff = nullptr;
+	// 設定は、バッファーのサイズ以外、頂点バッファーの設定を使い回してよい
 	resdesc.Width = indices.size() * sizeof(indices[0]);
 	result = _dev->CreateCommittedResource(
 		&heapprop,
@@ -408,6 +426,119 @@ int main()
 	ibView.BufferLocation = idxBuff->GetGPUVirtualAddress();
 	ibView.Format = DXGI_FORMAT_R16_UINT;
 	ibView.SizeInBytes = indices.size() * sizeof(indices[0]);
+
+	unsigned int materialNum;   // マテリアル数
+	fread(&materialNum, sizeof(materialNum), 1, fp);
+
+	std::vector<PMDMaterial> pmdMaterials(materialNum);
+
+	fread(
+		pmdMaterials.data(),
+		pmdMaterials.size() * sizeof(PMDMaterial),
+		1,
+		fp);   // 一気に読み込む
+
+	// シェーダー側に投げられるマテリアルデータ
+	struct MaterialForHlsl
+	{
+		XMFLOAT3 diffuse;   // ディフューズ色
+		float alpha;   // ディフューズα
+		XMFLOAT3 specular;   // スペキュラ色
+		float specularity;   // スペキュラの強さ（乗算値）
+		XMFLOAT3 ambient;   // アンビエント色
+	};
+
+	// それ以外のマテリアルデータ
+	struct AdditionalMaterial
+	{
+		std::string texPath;   // テクスチャファイルパス
+		int toonIdx;   // トゥーン番号
+		bool edgeFlg;   // マテリアルごとの輪郭線フラグ
+	};
+
+	// 全体をまとめるデータ
+	struct Material
+	{
+		unsigned int indicesNum;   // インデックス数
+		MaterialForHlsl material;
+		AdditionalMaterial additional;
+	};
+
+	std::vector<Material> materials(pmdMaterials.size());
+	// コピー
+	for (int i = 0; i < pmdMaterials.size(); ++i)
+	{
+		materials[i].indicesNum = pmdMaterials[i].indicesNum;
+		materials[i].material.diffuse = pmdMaterials[i].diffuse;
+		materials[i].material.alpha = pmdMaterials[i].alpha;
+		materials[i].material.specular = pmdMaterials[i].specular;
+		materials[i].material.specularity = pmdMaterials[i].specularity;
+		materials[i].material.ambient = pmdMaterials[i].ambient;
+	}
+
+	// マテリアルバッファーを作成
+	auto materialBuffSize = sizeof(MaterialForHlsl);
+	materialBuffSize = (materialBuffSize + 0xff) & ~0xff;
+
+	ID3D12Resource* materialBuff = nullptr;
+
+	const D3D12_HEAP_PROPERTIES heapPropMat =
+		CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	const D3D12_RESOURCE_DESC resDescMat = CD3DX12_RESOURCE_DESC::Buffer(
+		materialBuffSize * materialNum);   // もったいないが仕方ない
+	result = _dev->CreateCommittedResource(
+		&heapPropMat,
+		D3D12_HEAP_FLAG_NONE,
+		&resDescMat,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&materialBuff)
+	);
+
+	// マップマテリアルにコピー
+	char* mapMaterial = nullptr;
+	result = materialBuff->Map(0, nullptr, (void**)&mapMaterial);
+	for (auto& m : materials) {
+		*((MaterialForHlsl*)mapMaterial) = m.material;   // データコピー
+		mapMaterial += materialBuffSize;   // 次のアライメント位置まで進める（256 の倍数）
+	}
+	materialBuff->Unmap(0, nullptr);
+
+	// マテリアル用ディスクリプタヒープとビューの作成
+	ID3D12DescriptorHeap* materialDescHeap = nullptr;
+
+	D3D12_DESCRIPTOR_HEAP_DESC matDescHeapDesc = {};
+	matDescHeapDesc.Flags =
+		D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	matDescHeapDesc.NodeMask = 0;
+	matDescHeapDesc.NumDescriptors = materialNum; // マテリアル数を指定
+	matDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+
+	result = _dev->CreateDescriptorHeap(
+		&matDescHeapDesc, IID_PPV_ARGS(&materialDescHeap));
+
+	// ディスクリプタヒープ上にビューを作成
+	D3D12_CONSTANT_BUFFER_VIEW_DESC matCBVDesc = {};
+
+	matCBVDesc.BufferLocation =
+		materialBuff->GetGPUVirtualAddress();   // バッファーアドレス
+	matCBVDesc.SizeInBytes =
+		static_cast<UINT>(materialBuffSize);   // マテリアルの256 アライメントサイズ
+
+	// 先頭を記録
+	auto matDescHeapH =
+		materialDescHeap->GetCPUDescriptorHandleForHeapStart();
+
+	for (UINT i = 0; i < materialNum; ++i)
+	{
+		_dev->CreateConstantBufferView(&matCBVDesc, matDescHeapH);
+		matDescHeapH.ptr +=
+			_dev->GetDescriptorHandleIncrementSize(
+				D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		matCBVDesc.BufferLocation += materialBuffSize;
+	}
+
+	fclose(fp);
 
 	ID3DBlob* _vsBlob = nullptr;
 	ID3DBlob* _psBlob = nullptr;
@@ -542,33 +673,42 @@ int main()
 	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
 	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
-	D3D12_DESCRIPTOR_RANGE descTblRange[2] = {};   // テクスチャと定数の2つ
-	
-	// テクスチャ用レジスター
-	descTblRange[0].NumDescriptors = 1;   // テクスチャ1 つ
-	descTblRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;   // 種別はテクスチャ
+	D3D12_DESCRIPTOR_RANGE descTblRange[2] = {};  // テクスチャと定数の2つ
+
+	// 定数用レジスター0 番
+	descTblRange[0].NumDescriptors = 1;   // 定数1 つ
+	descTblRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;   // 種別は定数
 	descTblRange[0].BaseShaderRegister = 0;   // 0 番スロットから
 	descTblRange[0].OffsetInDescriptorsFromTableStart =
 		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	// 定数用レジスター
-	descTblRange[1].NumDescriptors = 1;   // テクスチャ1 つ
+	// 定数用レジスター1 番
+	descTblRange[1].NumDescriptors = 1;   // ディスクリプタヒープは複数だが
+										  // 一度に使うのは1つ
 	descTblRange[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;   // 種別は定数
-	descTblRange[1].BaseShaderRegister = 0;   // 0 番スロットから
+	descTblRange[1].BaseShaderRegister = 1;   // 1 番スロットから
 	descTblRange[1].OffsetInDescriptorsFromTableStart =
 		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER rootparam = {};
-	rootparam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	D3D12_ROOT_PARAMETER rootparam[2] = {};
+	rootparam[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	// 配列先頭アドレス
-	rootparam.DescriptorTable.pDescriptorRanges = descTblRange;
+	rootparam[0].DescriptorTable.pDescriptorRanges = descTblRange;
 	// ディスクリプタレンジ数
-	rootparam.DescriptorTable.NumDescriptorRanges = 2;
+	rootparam[0].DescriptorTable.NumDescriptorRanges = 1;
 	// すべてのシェーダーから見える
-	rootparam.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+	rootparam[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-	rootSignatureDesc.pParameters = &rootparam;   // ルートパラメーターの先頭アドレス
-	rootSignatureDesc.NumParameters = 1;   // ルートパラメーター数
+	rootparam[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	rootparam[1].DescriptorTable.pDescriptorRanges =
+		&descTblRange[1];   // ディスクリプタレンジのアドレス
+	rootparam[1].DescriptorTable.NumDescriptorRanges =
+		1;   // ディスクリプタレンジ数
+	rootparam[1].ShaderVisibility =
+		D3D12_SHADER_VISIBILITY_ALL;   // すべてのシェーダーから見える
+
+	rootSignatureDesc.pParameters = rootparam;   // ルートパラメーターの先頭アドレス
+	rootSignatureDesc.NumParameters = 2;   // ルートパラメーター数
 
 	// サンプラーの設定
 	D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
@@ -785,11 +925,11 @@ int main()
 		XMMATRIX world;   // モデル本体を回転させたり移動させたりする行列
 		XMMATRIX viewproj;   // ビューとプロジェクション合成行列
 
-		float angile;
+		float lightAngle;   // ライトの角度
 	};
 
 	// 定数バッファの作成
-	XMMATRIX worldMat = XMMatrixRotationY(XM_PIDIV4);
+	XMMATRIX worldMat = XMMatrixRotationY(0);   // XM_PIDIV4
 
 	XMFLOAT3 eye(0, 10, -15);
 	XMFLOAT3 target(0, 10, 0);
@@ -829,32 +969,15 @@ int main()
 	descHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	// マスクは0
 	descHeapDesc.NodeMask = 0;
-	// SRV 1つと CBV 1つ
-	descHeapDesc.NumDescriptors = 2;
+	// SRV1つとCBV1つ
+	descHeapDesc.NumDescriptors = 1;
 	// シェーダーリソースビュー用
 	descHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	// 生成
 	result = _dev->CreateDescriptorHeap(&descHeapDesc, IID_PPV_ARGS(&basicDescHeap));
 
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.Format = metadata.format;
-	srvDesc.Shader4ComponentMapping =
-		D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;   // 後述
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;   // 2D テクスチャ
-	srvDesc.Texture2D.MipLevels = 1;   // ミップマップは使用しないので1
-
-	// ディスクリプタの先頭ハンドルを取得しておく
+	//デスクリプタの先頭ハンドルを取得しておく
 	auto basicHeapHandle = basicDescHeap->GetCPUDescriptorHandleForHeapStart();
-
-	_dev->CreateShaderResourceView(
-		texbuff,   // ビューと関連付けるバッファー
-		&srvDesc,   // 先ほど設定したテクスチャ設定情報
-		basicHeapHandle // ヒープのどこに割り当てるか
-	);
-
-	// 次の場所に移動
-	basicHeapHandle.ptr +=
-		_dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
 	cbvDesc.BufferLocation = constBuff->GetGPUVirtualAddress();
@@ -888,11 +1011,11 @@ int main()
 		// [6] チャレンジ問題
         // ポリゴンを振り回してみよう
 		RevolutionPlatePoly(&angle, &worldMat);
-		//UpdateCamera(&viewMat);   // 未完成危険
+		//UpdateCamera(&viewMat, &angle);   // 未完成危険
 
 		// [7] チャレンジ問題
         // ライトの向きを動かしてみよう
-		MoveLight(&mapMatrix->angile);
+		MoveLight(&mapMatrix->lightAngle);
 
 		mapMatrix->world = worldMat;
 		mapMatrix->viewproj = viewMat * projMat;
@@ -920,32 +1043,43 @@ int main()
 		// Gradation(&r, &g, &b);
 
 		// 画面クリア
-		float clearColor[] = { r, g, b, 1.0f }; 
-		_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);;
+		float clearColor[] = { 1.0f, 1.0f, 1.0f, 1.0f }; // 白色
+		_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
 		_cmdList->ClearDepthStencilView(dsvH, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
-		// ルートシグネチャのセット
 		_cmdList->SetGraphicsRootSignature(rootsignature);
-		// ディスクリプタヒープの指定
 		_cmdList->SetDescriptorHeaps(1, &basicDescHeap);
-		
-		_cmdList->SetGraphicsRootDescriptorTable(
-			0,   // ルートパラメーターインデックス
-			basicDescHeap->GetGPUDescriptorHandleForHeapStart());   // ヒープアドレス
+		_cmdList->SetGraphicsRootDescriptorTable(0,
+			basicDescHeap->GetGPUDescriptorHandleForHeapStart());
 
-		// ビューポートとシザー矩形のセット
 		_cmdList->RSSetViewports(1, &viewport);
 		_cmdList->RSSetScissorRects(1, &scissorrect);
 
-		// プリミティブトポロジのセット
 		_cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-		// 頂点情報のセット
 		_cmdList->IASetVertexBuffers(0, 1, &vbView);
 		_cmdList->IASetIndexBuffer(&ibView);
 
-		// 描画（Draw）命令
-		_cmdList->DrawIndexedInstanced(indicesNum, 1, 0, 0, 0);
+		_cmdList->SetDescriptorHeaps(1, &materialDescHeap);
+		auto materialH = materialDescHeap->
+			GetGPUDescriptorHandleForHeapStart(); // ヒープ先頭
+
+		unsigned int idxOffset = 0; // 最初はオフセットなし
+
+		for (auto& m : materials)
+		{
+			_cmdList->SetGraphicsRootDescriptorTable(1, materialH);
+
+			_cmdList->DrawIndexedInstanced(m.indicesNum, 1, idxOffset, 0, 0);
+
+			// ヒープポインターとインデックスを次に進める
+			materialH.ptr +=
+				_dev->GetDescriptorHandleIncrementSize(
+					D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+			idxOffset += m.indicesNum;
+		}
+
 
 		// 前後だけ入れ替える
 		BarrierDesc = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -966,13 +1100,13 @@ int main()
 		if (_fence->GetCompletedValue() != _fenceVal) 
 		{
 			auto event = CreateEvent(nullptr, false, false, nullptr);
-			_fence->SetEventOnCompletion(_fenceVal, event);// イベントハンドルの取得
-			WaitForSingleObject(event, INFINITE);// イベントが発生するまで無限に待つ
-			CloseHandle(event);// イベントハンドルを閉じる
+			_fence->SetEventOnCompletion(_fenceVal, event);   // イベントハンドルの取得
+			WaitForSingleObject(event, INFINITE);   // イベントが発生するまで無限に待つ
+			CloseHandle(event);   // イベントハンドルを閉じる
 		}
 
-		_cmdAllocator->Reset(); // キューをクリア
-		_cmdList->Reset(_cmdAllocator, nullptr); // 再びコマンドリストをためる準備
+		_cmdAllocator->Reset();   // キューをクリア
+		_cmdList->Reset(_cmdAllocator, _pipelinestate);   // 再びコマンドリストをためる準備
 
 		// フリップ
 		_swapchain->Present(1, 0);
@@ -1012,20 +1146,40 @@ void RevolutionPlatePoly(float* angle, XMMATRIX* worldMat)
 	//*worldMat = XMMatrixRotationY(*angle);
 }
 
-// [7] チャレンジ問題
+// [7] チャレンジ問題  <-  11/16に修正
 // ライトの向きを動かしてみよう
-void MoveLight(float* angile)
+void MoveLight(float* lightAngle)
 {
-	*angile += 0.01f;
-	if (*angile > 7.0f) *angile = 0.0f;
+	*lightAngle += 0.01f;
+	if (*lightAngle > 360.0f) *lightAngle = 0;
 }
 
 // カメラ
-void UpdateCamera(XMMATRIX* viewMat)
+// 制作中の関数。使用注意。
+void UpdateCamera(XMMATRIX* viewMat, float* cameraAngle)
 {
-	XMFLOAT3 eye(0, 10, -15);
+	//XMFLOAT3 eye(0, 10, -15);
 	XMFLOAT3 target(0, 10, 0);
 	XMFLOAT3 up(0, 1, 0);
+
+	// 回転に関わるパラメータ
+	float speed = 0.01f;
+	float radius = 15.0f;
+	// [6] チャレンジ問題用の挙動
+	float x = 0;
+	float y = 0;
+	float z = 0;
+
+	// 公転処理
+	*cameraAngle += speed;
+	if (*cameraAngle > 360.0f) *cameraAngle = 0;
+	float radian = *cameraAngle * (XM_PI / 180.0f);
+
+	// [6] チャレンジ問題用の挙動
+	x = sin(*cameraAngle) * radius;
+	y = 0;
+	z = cos(*cameraAngle) * radius;
+	XMFLOAT3 eye(x, 10, z);
 
 	*viewMat = XMMatrixLookAtLH(
 		XMLoadFloat3(&eye), XMLoadFloat3(&target), XMLoadFloat3(&up));
