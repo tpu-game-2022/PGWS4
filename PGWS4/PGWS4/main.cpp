@@ -317,6 +317,27 @@ int WINAPI WinMain(HINSTANCE < HINSTANCE, LPSTR, int)
 	unsigned int vertNum;//頂点数を取得
 	fread(&vertNum, sizeof(vertNum), 1, fp);
 
+#pragma pack(1)
+	//PMDマテリアル構造体
+	struct PMDMaterial
+	{
+		XMFLOAT3 diffuse;//ディフューズ色
+		float alpha;//ディフューズα
+		float specularity;//スぺキュラの強さ(乗算値)
+		XMFLOAT3 specular;//スぺキュラ色
+		XMFLOAT3 ambient;//アビエント色
+		unsigned char toonIdx;//トゥーン番号(後述)
+		unsigned char edgeFlg;//マテリアルとの輪郭線フラグ
+
+		//注意：ここに２　バイトのパティングがある。
+
+		unsigned int indicesNum;//このマテリアルが割り当てられる
+		                        //インデックス数
+		char texFilePath[20];  //テクスチャファイルパス＋α(後述)
+		//70バイトのはずだが、パティングが発生するため72バイトになる。
+	};
+#pragma pack()
+
 #pragma pack(push,1)
 	struct PMD_VERTEX
 	{
@@ -337,6 +358,7 @@ int WINAPI WinMain(HINSTANCE < HINSTANCE, LPSTR, int)
 	//std::vector<unsigned char>vertices(vertNum * pmdvertex_size);//バッファー確保
 	//fread(vertices.data(), vertices.size(), 1, fp);//読み込み
 
+	
 	ID3D12Resource* vertBuff = nullptr;
 	auto heapprop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	auto resdesc = CD3DX12_RESOURCE_DESC::Buffer(vertices.size() * sizeof(PMD_VERTEX));
@@ -392,6 +414,81 @@ int WINAPI WinMain(HINSTANCE < HINSTANCE, LPSTR, int)
 	ibView.BufferLocation = idxBuff->GetGPUVirtualAddress();
 	ibView.Format = DXGI_FORMAT_R16_UINT;
 	ibView.SizeInBytes = indices.size() * sizeof(indices[0]);
+
+	unsigned int materialNum;//マテリアル数
+	fread(&materialNum, sizeof(materialNum), 1, fp);
+
+	std::vector<PMDMaterial>pmdMaterials(materialNum);
+
+	fread(
+		pmdMaterials.data(),
+		pmdMaterials.size() * sizeof(PMDMaterial),
+		1,
+		fp
+	);
+
+	//シェーダー側に投げられるマテリアルデータ
+	struct MaterialForHlsl
+	{
+		XMFLOAT3 diffuse;//ディフューズ色
+		float alpha;//ディフューズα
+		XMFLOAT3 specular;//スぺキュラ色
+		float specularity;//スぺキュラの強さ(乗算値)
+		XMFLOAT3 ambient;//アビエント色
+	};
+
+	//それ以外のマテリアルデータ
+	struct AdditionalMaterial
+	{
+		std::string texPath;
+		int toonIdx;
+		bool edgeFlg;
+	};
+	//全体をまとめるデータ
+	struct Material
+	{
+		unsigned int indicesNum;
+		MaterialForHlsl material;
+		AdditionalMaterial additional;
+	};
+
+	std::vector<Material>materials(pmdMaterials.size());
+	//コピー
+	for (int i = 0; i < pmdMaterials.size(); ++i)
+	{
+		materials[i].indicesNum = pmdMaterials[i].indicesNum;
+		materials[i].material.diffuse = pmdMaterials[i].diffuse;
+		materials[i].material.alpha = pmdMaterials[i].alpha;
+		materials[i].material.specular = pmdMaterials[i].specular;
+		materials[i].material.specularity = pmdMaterials[i].specularity;
+		materials[i].material.ambient = pmdMaterials[i].ambient;
+	}
+	//マテリアルバッファーの作成
+	auto materialBuffSize = sizeof(MaterialForHlsl);
+	materialBuffSize = (materialBuffSize + 0xff) & ~0xff;
+	ID3D12Resource* materialBuff = nullptr;
+	const D3D12_HEAP_PROPERTIES heapPropMat =
+		CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	const D3D12_RESOURCE_DESC resDescMat = CD3DX12_RESOURCE_DESC::Buffer(
+		materialBuffSize * materialNum);
+	result = _dev->CreateCommittedResource(
+		&heapPropMat,
+		D3D12_HEAP_FLAG_NONE,
+		&resDescMat,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&materialBuff)
+	);
+	//マップマテリアルにコピー
+	char* mapMaterial = nullptr;
+	result = materialBuff->Map(0, nullptr, (void**)&mapMaterial);
+	for (auto& m : materials) {
+		*((MaterialForHlsl*)mapMaterial) = m.material;
+		mapMaterial += materialBuffSize;
+
+	}
+	materialBuff->Unmap(0, nullptr);
+
 
 
 	//頂点シェーダのコンパイルコード
@@ -741,6 +838,13 @@ int WINAPI WinMain(HINSTANCE < HINSTANCE, LPSTR, int)
 		static_cast<UINT>(img->slicePitch)//全サイズ
 	);
 
+	//シェーダー側に渡すための基本的な行列データ
+	struct MatricesData
+	{
+		XMMATRIX word; //モデル本体を回転させたり移動させたりする行列
+		XMMATRIX viewproj;//ビューとプロジェクション合成行列
+	};
+
 	//定数バッファー作成
 	XMMATRIX worldMat = XMMatrixRotationY(XM_PIDIV4);
 
@@ -762,7 +866,7 @@ int WINAPI WinMain(HINSTANCE < HINSTANCE, LPSTR, int)
 
 	ID3D12Resource* constBuff = nullptr;
 	auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-	resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(XMMATRIX) + 0xff) & ~0xff);
+	resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(MatricesData) + 0xff) & ~0xff);
 	_dev->CreateCommittedResource(
 		&heapProp,
 		D3D12_HEAP_FLAG_NONE,
@@ -772,9 +876,10 @@ int WINAPI WinMain(HINSTANCE < HINSTANCE, LPSTR, int)
 		IID_PPV_ARGS(&constBuff)
 	);
 
-	XMMATRIX* mapMaterix; //マップ先を示すポインター
+	MatricesData* mapMaterix; //マップ先を示すポインター
 	result = constBuff->Map(0, nullptr, (void**)&mapMaterix);//マップ
-	*mapMaterix = worldMat;//行列の内容をコピー
+	mapMaterix ->word= worldMat;//行列の内容をコピー
+	mapMaterix->viewproj = viewMat*projMat;//行列の内容をコピー
 
 	ID3D12DescriptorHeap* basicDescHeap = nullptr;
 	D3D12_DESCRIPTOR_HEAP_DESC descHeapDesc = {};
@@ -834,7 +939,8 @@ int WINAPI WinMain(HINSTANCE < HINSTANCE, LPSTR, int)
 
 		angle += 0.01f;
 		worldMat = XMMatrixRotationY(angle);
-		*mapMaterix = worldMat * viewMat * projMat;
+		mapMaterix->word = worldMat;//行列の内容をコピー
+		mapMaterix->viewproj = viewMat * projMat;//行列の内容をコピー
 
 		auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
 
