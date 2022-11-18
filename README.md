@@ -9,7 +9,7 @@
 
 # 結果画像
 
-![進捗画像](https://user-images.githubusercontent.com/71791660/201549235-32026ff8-b2bd-4eba-a25d-83e9007050c4.gif)
+![進捗画像](https://user-images.githubusercontent.com/71791660/202806193-9d752f7e-f6d1-4cda-977c-edc386f81de5.gif)
 
 # 締め切り
 次の授業の2日前（水曜日の授業であれば月曜日一杯）
