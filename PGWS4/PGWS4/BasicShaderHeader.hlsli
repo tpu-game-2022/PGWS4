@@ -16,6 +16,15 @@ cbuffer cbuff0 :register(b0)
 	matrix viewproj;
 };
 
+//定数バッファー1
+//マテリアル用
+cbuffer Material :register(b1)
+{
+	float4 diffuse;//ディフューズ色
+	float4 specular;//スぺキュラ色
+	float3 ambient;//アビエント色
+};
+
 //struct Matrix
 //{
 //	matrix mat;
