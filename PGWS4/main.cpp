@@ -590,10 +590,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	gpipeline.VS.BytecodeLength = _vsBlob->GetBufferSize();
 	gpipeline.PS.pShaderBytecode = _psBlob->GetBufferPointer();
 	gpipeline.PS.BytecodeLength = _psBlob->GetBufferSize();
-	//gpipeline.InputLayout.pInputElementDescs = inputLayout;//レイアウト専用アドレス
-	//gpipeline.InputLayout.NumElements = _countof(inputLayout);//レイアウト配列数
-
-
+	
 	//デフォルトのサンプルマスクを表す定数(0xffffffff)
 	gpipeline.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;
 
@@ -603,6 +600,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	gpipeline.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;//カリングしない
 	gpipeline.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;//中身を塗りつぶす
 	gpipeline.RasterizerState.DepthClipEnable = true;//深度方向のクリッピングは有効に
+
+	//深度ステンシル
+	gpipeline.DepthStencilState.DepthEnable = true;
+	gpipeline.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	gpipeline.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+	gpipeline.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 
 	gpipeline.BlendState.AlphaToCoverageEnable = false;
 	gpipeline.BlendState.IndependentBlendEnable = false;
@@ -628,18 +631,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	gpipeline.SampleDesc.Count = 1;
 	gpipeline.SampleDesc.Quality = 0;
 
-	//深度ステンシル
-	gpipeline.DepthStencilState.DepthEnable = true;
-	gpipeline.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-	gpipeline.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
-	gpipeline.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 
 	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
 	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
 	D3D12_DESCRIPTOR_RANGE descTblRange[2] = {};
 	descTblRange[0].NumDescriptors = 1; // テクスチャ1 つ
-	descTblRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV; // 種別はテクスチャ
+	descTblRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV; // 種別はテクスチャ
 	descTblRange[0].BaseShaderRegister = 0; // 0 番スロットから
 	descTblRange[0].OffsetInDescriptorsFromTableStart =
 		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
@@ -663,12 +661,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// ディスクリプタレンジのアドレス
 	rootparam[1].DescriptorTable.pDescriptorRanges = &descTblRange[1];
 	// ディスクリプタレンジ数
-	rootparam[0].DescriptorTable.NumDescriptorRanges = 1;
+	rootparam[1].DescriptorTable.NumDescriptorRanges = 1;
 	//allシェーダーから見える
-	rootparam[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+	rootparam[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-	rootSignatureDesc.pParameters = &rootparam; // ルートパラメーターの先頭アドレス
-	rootSignatureDesc.NumParameters = 1; // ルートパラメーター数
+	rootSignatureDesc.pParameters = rootparam; // ルートパラメーターの先頭アドレス
+	rootSignatureDesc.NumParameters = 2; // ルートパラメーター数
 
 	D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
 	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP; // 横方向の繰り返し
@@ -720,22 +718,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	scissorrect.left = 0;
 	scissorrect.right = scissorrect.left + window_width;
 	scissorrect.bottom = scissorrect.top + window_height;
-
-	////チャレンジしてみたい
-	////WICテクスチャのロード
-	//TexMetadata metadata[2] = {};
-	//ScratchImage scratchImg[2] = {};
-
-	//result = LoadFromWICFile(
-	//	L"img/textest.png", WIC_FLAGS_NONE,
-	//	metadata, scratchImg[0]);
-	//
-	//result = LoadFromWICFile(
-	//	L"img/textest.png", WIC_FLAGS_NONE,
-	//	&metadata[1], scratchImg[1]);
-
-	//auto img = scratchImg[0].GetImage(0, 0, 0);
-	//auto img_mafuyu = scratchImg[1].GetImage(0, 0, 0);
 
 	//WICテクスチャのロード
 	TexMetadata metadata = {};
@@ -859,8 +841,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	dst.SubresourceIndex = 0;
 
 	_cmdList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
-	//授業内でここまで書いた
-
 	//D3D12_RESOURCE_BARRIER BarrierDesc = {};
 	//BarrierDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	//BarrierDesc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
@@ -971,72 +951,96 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		mapMatrix->world = worldMat;
 		mapMatrix->viewproj = viewMat* projMat;
 
-		//画面クリア
-		float clearColor[] = { 1.0f,1.0f,1.0f,1.0f };//白色
-
+		
 		//DirectX処理
-		//バックバッファのインデックスを取得
+//バックバッファのインデックスを取得
 		auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
 
-		D3D12_RESOURCE_BARRIER BarrierDesc = {};
-		BarrierDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;//遷移
-		BarrierDesc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;//特に指定なし
-		BarrierDesc.Transition.pResource = _backBuffers[bbIdx];//バックバッファーリソース
-		BarrierDesc.Transition.Subresource = 0;
-		//BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;//直前はPRESENT状態
-		//BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;//今からRT状態
-		//_cmdList->ResourceBarrier(1, &BarrierDesc);//バリア指定実行
+		auto BarrierDesc = CD3DX12_RESOURCE_BARRIER::Transition(
+			_backBuffers[bbIdx], D3D12_RESOURCE_STATE_PRESENT,
+			D3D12_RESOURCE_STATE_RENDER_TARGET);   // これだけで済む
+		_cmdList->ResourceBarrier(1, &BarrierDesc);  // バリア指定実行
+
+		// パイプラインステートのセット
 		_cmdList->SetPipelineState(_pipelinestate);
-		//レンダ―ターゲットを指定
+
+		//レンダーターゲットを指定
 		auto rtvH = rtvHeaps->GetCPUDescriptorHandleForHeapStart();
 		rtvH.ptr += bbIdx * _dev->GetDescriptorHandleIncrementSize(
 			D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 		auto dsvH = dsvHeap->GetCPUDescriptorHandleForHeapStart();
 		_cmdList->OMSetRenderTargets(1, &rtvH, true, &dsvH);
 
+		// 画面色をグラデーションさせる
+		// Gradation(&r, &g, &b);
 
+		// 画面クリア
+		float clearColor[] = { 1.0f, 1.0f, 1.0f, 1.0f }; // 白色
 		_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
 		_cmdList->ClearDepthStencilView(dsvH, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-		//前後だけ入れ替える
-		BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-		_cmdList->ResourceBarrier(1, &BarrierDesc);
 
 		_cmdList->SetGraphicsRootSignature(rootsignature);
 		_cmdList->SetDescriptorHeaps(1, &basicDescHeap);
-		_cmdList->SetGraphicsRootDescriptorTable(
-			0, basicDescHeap->GetGPUDescriptorHandleForHeapStart());
+		_cmdList->SetGraphicsRootDescriptorTable(0,
+			basicDescHeap->GetGPUDescriptorHandleForHeapStart());
 
 		_cmdList->RSSetViewports(1, &viewport);
 		_cmdList->RSSetScissorRects(1, &scissorrect);
+
 		_cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
 		_cmdList->IASetVertexBuffers(0, 1, &vbView);
 		_cmdList->IASetIndexBuffer(&ibView);
-		_cmdList->DrawIndexedInstanced(indicesNum, 1, 0, 0, 0);
+
+		_cmdList->SetDescriptorHeaps(1, &materialDescHeap);
+		auto materialH = materialDescHeap->
+			GetGPUDescriptorHandleForHeapStart(); // ヒープ先頭
+
+		unsigned int idxOffset = 0; // 最初はオフセットなし
+
+		for (auto& m : materials)
+		{
+			_cmdList->SetGraphicsRootDescriptorTable(1, materialH);
+
+			_cmdList->DrawIndexedInstanced(m.indicesNum, 1, idxOffset, 0, 0);
+
+			// ヒープポインターとインデックスを次に進める
+			materialH.ptr +=
+				_dev->GetDescriptorHandleIncrementSize(
+					D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+			idxOffset += m.indicesNum;
+		}
 
 
-		//命令のクローズ
+		// 前後だけ入れ替える
+		BarrierDesc = CD3DX12_RESOURCE_BARRIER::Transition(
+			_backBuffers[bbIdx], D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_PRESENT);
+		_cmdList->ResourceBarrier(1, &BarrierDesc);
+
+		// 命令のクローズ
 		_cmdList->Close();
 
-		//コマンドリストの実行
+		// コマンドリストの実行
 		ID3D12CommandList* cmdlists[] = { _cmdList };
 		_cmdQueue->ExecuteCommandLists(1, cmdlists);
 
-		//待ち
+		////待ち
 		_cmdQueue->Signal(_fence, ++_fenceVal);
 
 		if (_fence->GetCompletedValue() != _fenceVal)
 		{
 			auto event = CreateEvent(nullptr, false, false, nullptr);
-			_fence->SetEventOnCompletion(_fenceVal, event);//イベントハンドルの取得
-			WaitForSingleObject(event, INFINITE);//イベントが発生するまで待つ
-			CloseHandle(event);//イベントハンドルを閉じる
+			_fence->SetEventOnCompletion(_fenceVal, event);   // イベントハンドルの取得
+			WaitForSingleObject(event, INFINITE);   // イベントが発生するまで無限に待つ
+			CloseHandle(event);   // イベントハンドルを閉じる
 		}
 
-		_cmdAllocator->Reset();//キューをクリア
-		_cmdList->Reset(_cmdAllocator, nullptr);//再びコマンドリストをためる準備
+		_cmdAllocator->Reset();   // キューをクリア
+		_cmdList->Reset(_cmdAllocator, _pipelinestate);   // 再びコマンドリストをためる準備
 
-		//フリップ
+		// フリップ
 		_swapchain->Present(1, 0);
 	}
 
