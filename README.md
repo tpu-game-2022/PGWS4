@@ -44,6 +44,10 @@
 
 https://user-images.githubusercontent.com/71632844/202159977-cbac4cee-3ea6-4810-8df7-161d7a98963e.mp4
 
+# 第10回課題 結果画像
+ディフューズまで正しく反映されるようになりました。
+
+![DX12テスト 2022_11_30 17_51_52](https://user-images.githubusercontent.com/71632844/204753668-9a37c8d6-ee78-4c63-b2f4-df2af8008534.png)
 
 
 
