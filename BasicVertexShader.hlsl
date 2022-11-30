@@ -7,10 +7,10 @@ Output BasicVS(
 	min16uint2 boneno : BONE_NO,
 	min16uint weight : WEIGHT)
 {
-	Output output;//
-	output.svpos = mul(mul(viewproj, world), pos); //
-	normal.w = 0; // 
-	output.normal = mul(world, normal); // 
+	Output output;//ピクセルシェーダーに渡す値
+	output.svpos = mul(viewproj, mul(world, pos)); //シェーダーでは列優先
+	normal.w = 0; //平行移動成分を無効にする
+	output.normal = mul(world, normal); //法線にもワールド変換を行う
 	output.uv = uv;
 	return output;
 }
