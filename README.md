@@ -19,6 +19,9 @@
 チャレンジ問題に挑戦しました。色とかも少しいじりました。
 ![PWS8回](https://user-images.githubusercontent.com/71625612/201660887-32eb05f0-1712-4acb-adda-2fa853b8d9e0.png)
 
+### 第九回授業
+![PWS9回](https://user-images.githubusercontent.com/71625612/204300441-cd7ace1a-1e64-4840-afd0-5f4177770cc2.png)
+
 
 
 # 締め切り
