@@ -6,8 +6,9 @@ struct Output
 	float2 uv : TEXCOORD;   // UV値
 };
 
-Texture2D<float4> tex : register(t0); // 0 番スロットに設定されたテクスチャ
-SamplerState smp : register(s0); // 0 番スロットに設定されたサンプラー
+Texture2D<float4> tex : register(t0);   // 0 番スロットに設定されたテクスチャ
+Texture2D<float4> sph : register(t1);   // 1 番スロットに設定されたテクスチャ
+SamplerState smp : register(s0);   // 0 番スロットに設定されたサンプラー
 
 // 定数バッファ
 cbuffer cbuff0 : register(b0)
