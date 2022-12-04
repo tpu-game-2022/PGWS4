@@ -39,6 +39,164 @@ LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
+std::string GetTexturePathFromModelAndTexPath(
+	const std::string& modelPath,
+	const char* texPath)
+{
+	int pathIndex1 = modelPath.rfind('/');
+	int pathIndex2 = modelPath.rfind('\\');
+	auto pathIndex = max(pathIndex1, pathIndex2);
+	auto folderPath = modelPath.substr(0, pathIndex + 1);
+	return folderPath + texPath;
+}
+
+std::string GetExtension(const std::string& path)
+{
+	int idx = static_cast<int>(path.rfind('.'));
+	return path.substr(
+		idx + 1, path.length() - idx - 1);
+}
+
+std::pair<std::string, std::string> SplitFileName(
+	const std::string& path, const char splitter = '*')
+{
+	int idx = static_cast<int>(path.find(splitter));
+	pair<std::string, std::string> ret;
+	ret.first = path.substr(0, idx);
+	ret.second = path.substr(
+		idx + 1, path.length() - idx - 1);
+	return ret;
+}
+
+
+std::wstring GetWideStringFromString(const std::string& str)
+{
+	auto num1 = MultiByteToWideChar(
+		CP_ACP,
+		MB_PRECOMPOSED | MB_ERR_INVALID_CHARS,
+		str.c_str(),
+		-1,
+		nullptr,
+		0);
+
+	std::wstring wstr;
+	wstr.resize(num1);
+
+	auto num2 = MultiByteToWideChar(
+		CP_ACP,
+		MB_PRECOMPOSED | MB_ERR_INVALID_CHARS,
+		str.c_str(),
+		-1,
+		&wstr[0],
+		num1);
+
+	assert(num1 == num2);
+	return wstr;
+}
+
+ID3D12Resource* LoadTextureFromFile(std::string& texPath, ID3D12Device* dev)
+{
+	TexMetadata metadata = {};
+	ScratchImage scratchImg = {};
+
+	HRESULT result = LoadFromWICFile(
+		GetWideStringFromString(texPath).c_str(),
+		WIC_FLAGS_NONE,
+		&metadata,
+		scratchImg);
+
+	if (FAILED(result)) { return nullptr; }
+
+	D3D12_HEAP_PROPERTIES texHeapProp = {};
+	texHeapProp.Type = D3D12_HEAP_TYPE_CUSTOM;
+	texHeapProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
+	texHeapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
+	texHeapProp.CreationNodeMask = 0;
+	texHeapProp.VisibleNodeMask = 0;
+
+	D3D12_RESOURCE_DESC resDesc = {};
+	resDesc.Format = metadata.format;
+	resDesc.Width = static_cast<UINT>(metadata.width);
+	resDesc.Height = static_cast<UINT>(metadata.height);
+	resDesc.DepthOrArraySize = static_cast<UINT16>(metadata.arraySize);
+	resDesc.SampleDesc.Count = 1;
+	resDesc.SampleDesc.Quality = 0;
+	resDesc.MipLevels = static_cast<UINT16>(metadata.mipLevels);
+	resDesc.Dimension = static_cast<D3D12_RESOURCE_DIMENSION>(metadata.dimension);
+	resDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	resDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+	ID3D12Resource* texbuff = nullptr;
+	result = dev->CreateCommittedResource(
+		&texHeapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&resDesc,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		nullptr,
+		IID_PPV_ARGS(&texbuff)
+	);
+	if (FAILED(result)) { return nullptr; }
+
+	const Image* img = scratchImg.GetImage(0, 0, 0);
+
+	result = texbuff->WriteToSubresource(
+		0,
+		nullptr,
+		img->pixels,
+		static_cast<UINT>(img->rowPitch),
+		static_cast<UINT>(img->slicePitch)
+	);
+	if (FAILED(result)) { return nullptr; }
+
+	return texbuff;
+}
+
+ID3D12Resource* CreateWhiteTexture(ID3D12Device* dev)
+{
+	D3D12_HEAP_PROPERTIES texHeapProp = {};
+
+	texHeapProp.Type = D3D12_HEAP_TYPE_CUSTOM;
+	texHeapProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
+	texHeapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
+	texHeapProp.CreationNodeMask = 0;
+	texHeapProp.VisibleNodeMask = 0;
+
+	D3D12_RESOURCE_DESC resDesc = {};
+	resDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	resDesc.Width = 4;
+	resDesc.Height = 4;
+	resDesc.DepthOrArraySize = 1;
+	resDesc.SampleDesc.Count = 1;
+	resDesc.SampleDesc.Quality = 0;
+	resDesc.MipLevels = 1;
+	resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	resDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	resDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+	ID3D12Resource* whiteBuff = nullptr;
+	auto result = dev->CreateCommittedResource(
+		&texHeapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&resDesc,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		nullptr,
+		IID_PPV_ARGS(&whiteBuff)
+	);
+	if (FAILED(result)) { return nullptr; }
+
+	std::vector<unsigned char> data(4 * 4 * 4);
+	std::fill(data.begin(), data.end(), 0xff);
+
+	result = whiteBuff->WriteToSubresource(
+		0,
+		nullptr,
+		data.data(),
+		4 * 4,
+		static_cast<UINT>(data.size()));
+
+	return whiteBuff;
+}
+
 size_t AlignmentedSize(size_t size, size_t alignment)
 {
 	return size + alignment - size % alignment;
@@ -251,6 +409,8 @@ result = _dev->CreateFence(_fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_fenc
 
 ShowWindow(hwnd, SW_SHOW);
 
+ID3D12Resource* whiteTex = CreateWhiteTexture(_dev);
+
 struct PMDHeader
 {
 	float version;
@@ -260,8 +420,9 @@ struct PMDHeader
 
 char signature[3] = {};
 PMDHeader pmdheader = {};
+std::string strModelPath = "Model/初音ミクmetal.pmd";
 FILE* fp;
-fopen_s(&fp, "Model/初音ミク.pmd", "rb");
+fopen_s(&fp, strModelPath.c_str(), "rb");
 
 fread(signature, sizeof(signature), 1, fp);
 fread(&pmdheader, sizeof(pmdheader), 1, fp);
@@ -402,6 +563,56 @@ for (int i = 0; i < pmdMaterials.size(); ++i)
 	materials[i].material.ambient = pmdMaterials[i].ambient;
 }
 
+vector<ID3D12Resource*> textureResources(materialNum);
+vector<ID3D12Resource*> sphResources(materialNum, nullptr);
+
+for (int i = 0; i < pmdMaterials.size(); ++i)
+{
+	if (strlen(pmdMaterials[i].texFilePath) == 0)
+	{
+		textureResources[i] = nullptr;
+		continue;
+	}
+
+	std::string texFileName = pmdMaterials[i].texFilePath;
+	std::string sphFileName = "";
+
+	if (std::count(texFileName.begin(), texFileName.end(), '*') > 0)
+	{
+		auto namepair = SplitFileName(texFileName);
+		if (GetExtension(namepair.first) == "sph" ||
+			GetExtension(namepair.first) == "spa")
+		{
+			texFileName = namepair.second;
+			sphFileName = namepair.first;
+		}
+		else
+		{
+			texFileName = namepair.first;
+			sphFileName = namepair.second;
+		}
+	}
+	else
+	{
+		if (GetExtension(pmdMaterials[i].texFilePath) == "sph")
+		{
+			sphFileName = pmdMaterials[i].texFilePath;
+			texFileName = "";
+		}
+	}
+
+	auto texFilePath = GetTexturePathFromModelAndTexPath(
+		strModelPath, texFileName.c_str());
+	textureResources[i] = LoadTextureFromFile(texFilePath, _dev);
+
+	if (sphFileName != "")
+	{
+		auto sphFilePath = GetTexturePathFromModelAndTexPath(strModelPath, sphFileName.c_str());
+		sphResources[i] = LoadTextureFromFile(sphFilePath, _dev);
+	}
+}
+
+
 auto materialBuffSize = sizeof(MaterialForHlsl);
 materialBuffSize = (materialBuffSize + 0xff) & ~0xff;
 
@@ -431,10 +642,9 @@ materialBuff->Unmap(0, nullptr);
 ID3D12DescriptorHeap* materialDescHeap = nullptr;
 
 D3D12_DESCRIPTOR_HEAP_DESC matDescHeapDesc = {};
-matDescHeapDesc.Flags =
-D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+matDescHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 matDescHeapDesc.NodeMask = 0;
-matDescHeapDesc.NumDescriptors = materialNum;
+matDescHeapDesc.NumDescriptors = materialNum * 3;
 matDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 
 result = _dev->CreateDescriptorHeap(
@@ -447,15 +657,54 @@ materialBuff->GetGPUVirtualAddress();
 matCBVDesc.SizeInBytes =
 static_cast<UINT>(materialBuffSize);
 
+D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+
+srvDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+srvDesc.Shader4ComponentMapping =
+D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+srvDesc.Texture2D.MipLevels = 1;
+
 auto matDescHeapH = materialDescHeap->GetCPUDescriptorHandleForHeapStart();
+UINT incSize = _dev->GetDescriptorHandleIncrementSize(
+	D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 for (UINT i = 0; i < materialNum; ++i)
 {
 	_dev->CreateConstantBufferView(&matCBVDesc, matDescHeapH);
-	matDescHeapH.ptr +=
-		_dev->GetDescriptorHandleIncrementSize(
-			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	matDescHeapH.ptr += incSize;
 	matCBVDesc.BufferLocation += materialBuffSize;
+
+	if (textureResources[i] == nullptr)
+	{
+		srvDesc.Format = whiteTex->GetDesc().Format;
+		_dev->CreateShaderResourceView(
+			whiteTex, &srvDesc, matDescHeapH);
+	}
+	else
+	{
+		srvDesc.Format = textureResources[i]->GetDesc().Format;
+		_dev->CreateShaderResourceView(
+			textureResources[i],
+			&srvDesc,
+			matDescHeapH);
+	}
+
+	matDescHeapH.ptr += incSize;
+
+	if (sphResources[i] == nullptr)
+	{
+		srvDesc.Format = whiteTex->GetDesc().Format;
+		_dev->CreateShaderResourceView(
+			whiteTex, &srvDesc, matDescHeapH);
+	}
+	else
+	{
+		srvDesc.Format = sphResources[i]->GetDesc().Format;
+		_dev->CreateShaderResourceView(
+			sphResources[i], &srvDesc, matDescHeapH);
+	}
+	matDescHeapH.ptr += incSize;
 }
 
 fclose(fp);
@@ -592,7 +841,7 @@ gpipeline.SampleDesc.Quality = 0;
 D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc{};
 rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
-D3D12_DESCRIPTOR_RANGE descTblRange[2] = {};
+D3D12_DESCRIPTOR_RANGE descTblRange[3] = {};
 descTblRange[0].NumDescriptors = 1;
 descTblRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
 descTblRange[0].BaseShaderRegister = 0;
@@ -603,6 +852,11 @@ descTblRange[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
 descTblRange[1].BaseShaderRegister = 1;
 descTblRange[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
+descTblRange[2].NumDescriptors = 2;
+descTblRange[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+descTblRange[2].BaseShaderRegister = 0;
+descTblRange[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
 D3D12_ROOT_PARAMETER rootparam[2] = {};
 rootparam[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 rootparam[0].DescriptorTable.pDescriptorRanges = descTblRange;
@@ -611,8 +865,8 @@ rootparam[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
 rootparam[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 rootparam[1].DescriptorTable.pDescriptorRanges = &descTblRange[1];
-rootparam[1].DescriptorTable.NumDescriptorRanges = 1;
-rootparam[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+rootparam[1].DescriptorTable.NumDescriptorRanges = 2;
+rootparam[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 rootSignatureDesc.pParameters = rootparam;
 rootSignatureDesc.NumParameters = 2;
@@ -946,6 +1200,9 @@ while (true)
 
 	unsigned int idxOffset = 0;
 
+	UINT cbvsrvIncSize = _dev->GetDescriptorHandleIncrementSize(
+		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 3;
+
 	for (auto& m : materials)
 	{
 		_cmdList->SetGraphicsRootDescriptorTable(1, materialH);
@@ -953,10 +1210,7 @@ while (true)
 		_cmdList->DrawIndexedInstanced(
 			m.indicesNum, 1, idxOffset, 0, 0);
 
-		materialH.ptr +=
-			_dev->GetDescriptorHandleIncrementSize(
-				D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
+		materialH.ptr += cbvsrvIncSize;
 		idxOffset += m.indicesNum;
 	}
 
