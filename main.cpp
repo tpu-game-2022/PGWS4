@@ -1153,8 +1153,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	descHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	// マスクは0
 	descHeapDesc.NodeMask = 0;
-	// SRV１つとCBV１つ
-	descHeapDesc.NumDescriptors = 2;
+	// CBV１つ
+	descHeapDesc.NumDescriptors = 1;
 	// シェーダーリソースビュー用
 	descHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	// 生成
