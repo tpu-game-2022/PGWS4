@@ -103,6 +103,31 @@ std::wstring GetWideStringFromString(const std::string& str)
 	return wstr;
 }
 
+// ファイル名～拡張しを取得する
+// @param path 対象のパス文字列
+// @return 拡張子
+std::string GetExtension(const std::string& path)
+{
+	int idx = static_cast<int>(path.rfind('.'));
+	return path.substr(
+		idx + 1, path.length() - idx - 1);
+}
+
+// テクスチャのパスをセパレーター文字で分離する
+// @param path 対象のパス文字列
+// @param splitter 区切り文字
+// @return 分離前後の文字列ペア
+std::pair<std::string, std::string> SplitFileName(
+	const std::string& path, const char splitter = '*')
+{
+	int idx = static_cast<int>(path.find(splitter));
+	pair<std::string, std::string>ret;
+	ret.first = path.substr(0, idx);
+	ret.second = path.substr(
+		idx + 1, path.length() - idx - 1);
+	return ret;
+}
+
 ID3D12Resource* LoadTextureFromFile(std::string& texPath, ID3D12Device* dev)
 {
 	// WIC テクスチャのロード
@@ -163,7 +188,7 @@ ID3D12Resource* LoadTextureFromFile(std::string& texPath, ID3D12Device* dev)
 	return texbuff;
 }
 
-ID3D12Resource* CreateWhiteTexture(ID3D12Device* dev)
+ID3D12Resource* CreateMonoTexture(ID3D12Device* dev, unsigned int val)
 {
 	D3D12_HEAP_PROPERTIES texHeapProp = {};
 
@@ -189,7 +214,7 @@ ID3D12Resource* CreateWhiteTexture(ID3D12Device* dev)
 	ID3D12Resource* whiteBuff = nullptr;
 	auto result = dev->CreateCommittedResource(
 		&texHeapProp,
-		D3D12_HEAP_FLAG_NONE,
+		D3D12_HEAP_FLAG_NONE, // 特に指定なし
 		&resDesc,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 		nullptr,
@@ -197,8 +222,8 @@ ID3D12Resource* CreateWhiteTexture(ID3D12Device* dev)
 	);
 	if (FAILED(result)) { return nullptr; }
 
-	std::vector<unsigned char>data(4 * 4 * 4);
-	std::fill(data.begin(), data.end(), 0xff); // 全部で255 で埋める
+	std::vector<unsigned char> data(4 * 4 * 4);
+	std::fill(data.begin(), data.end(), val); // 全部valで埋める
 
 	// データ転送
 	result = whiteBuff->WriteToSubresource(
@@ -209,6 +234,16 @@ ID3D12Resource* CreateWhiteTexture(ID3D12Device* dev)
 		static_cast<UINT>(data.size()));
 
 	return whiteBuff;
+}
+
+ID3D12Resource* CreateWhiteTexture(ID3D12Device* dev)
+{
+	return CreateMonoTexture(dev, 0xff);
+}
+
+ID3D12Resource* CreateBlackTexture(ID3D12Device* dev)
+{
+	return CreateMonoTexture(dev, 0x00);
 }
 
 // アライメントにそろえたサイズを返す
@@ -384,9 +419,9 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	DXGI_SWAP_CHAIN_DESC swcDesc = {};
 	result = _swapchain->GetDesc(&swcDesc);
 
-	// sRGB レンダーターゲットビュー設定
+	// レンダーターゲットビュー設定
 	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
-	rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; // ガンマ補正あり（sRGB）
+	rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // ガンマ補正なし
 	rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
 	std::vector<ID3D12Resource*> _backBuffers(swcDesc.BufferCount);
@@ -459,7 +494,9 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	ShowWindow(hwnd, SW_SHOW);
 
 	ID3D12Resource* whiteTex = CreateWhiteTexture(_dev);
+	ID3D12Resource* blackTex = CreateBlackTexture(_dev);
 
+	// PMD ヘッダー構造体
 	struct PMDHeader
 	{
 		float version; // 例：00 00 80 3F == 1.00
@@ -469,37 +506,41 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 
 	char signature[3] = {}; // シグネチャ
 	PMDHeader pmdheader = {};
-	std::string strModelPath = "Model/初音ミク.pmd";
+	//	std::string strModelPath = "Model/初音ミク.pmd";
+	//	std::string strModelPath = "Model/巡音ルカ.pmd";
+	std::string strModelPath = "Model/初音ミクmetal.pmd";
 	FILE* fp;
 	fopen_s(&fp, strModelPath.c_str(), "rb");
 
 	fread(signature, sizeof(signature), 1, fp);
 	fread(&pmdheader, sizeof(pmdheader), 1, fp);
 
-	constexpr size_t pmdvertex_size = 38; // 頂点1つ当たりのサイズ
+	constexpr size_t pmdvertex_size = 38; // 頂点1つあたりのサイズ
 
 	unsigned int vertNum; // 頂点数を取得
 	fread(&vertNum, sizeof(vertNum), 1, fp);
 
-#pragma pack(1) // ここから1 バイトバッキングとなり、アライメントは発生しない
+#pragma pack(1) // ここから1 バイトパッキングとなり、アライメントは発生しない
 	// PMD マテリアル構造体
 	struct PMDMaterial
 	{
 		XMFLOAT3 diffuse;		// ディフューズ色
 		float alpha;			// ディフューズα
-		float specularity;		// すぺきゅらの強さ（乗算値）
+		float specularity;		// スペキュラの強さ（乗算値）
 		XMFLOAT3 specular;		// スペキュラ色
 		XMFLOAT3 ambient;		// アンビエント色
 		unsigned char toonIdx;	// トゥーン番号（後述）
-		unsigned char edgeFlag;	// マテリアルごとの輪郭線フラグ
+		unsigned char edgeFlg;	// マテリアルごとの輪郭線フラグ
 
 		// 注意：ここに2 バイトのパディングがある！！
 
-		unsigned int indicesNum; // このマテリアルが割り当てられる
+		unsigned int indicesNum;// このマテリアルが割り当てられる
 		// インデックス数（後述）
 		char texFilePath[20];	// テクスチャファイルパス＋α（後述）
 	}; // 70 バイトのはずだが、パディングが発生するため72 バイトになる
 #pragma pack() // パッキング指定を解除（デフォルトに戻す）
+
+
 
 #pragma pack(push, 1)
 	struct PMD_VERTEX
@@ -513,12 +554,12 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 		uint16_t dummy;
 	};
 #pragma pack(pop)
-	std::vector<PMD_VERTEX> vertices(vertNum); // バッファーの確保
+	std::vector<PMD_VERTEX> vertices(vertNum);// バッファーの確保
 	for (unsigned int i = 0; i < vertNum; i++)
 	{
 		fread(&vertices[i], pmdvertex_size, 1, fp);
 	}
-	
+
 	ID3D12Resource* vertBuff = nullptr;
 	auto heapprop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	auto resdesc = CD3DX12_RESOURCE_DESC::Buffer(vertices.size() * sizeof(PMD_VERTEX));
@@ -537,19 +578,18 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 
 	D3D12_VERTEX_BUFFER_VIEW vbView = {};
 	vbView.BufferLocation = vertBuff->GetGPUVirtualAddress(); // バッファーの仮想アドレス
-	vbView.SizeInBytes = static_cast<UINT>(sizeof(PMD_VERTEX) * vertices.size()); // 全バイト数
-	vbView.StrideInBytes = sizeof(vertices[0]); // 1 頂点当たりのバイト数
+	vbView.SizeInBytes = static_cast<UINT>(vertices.size() * sizeof(PMD_VERTEX));//全バイト数
+	vbView.StrideInBytes = sizeof(vertices[0]); // 1 頂点あたりのバイト数
 
-	unsigned int indicesNum; // インデックス数
+	unsigned int indicesNum;//インデックス数
 	fread(&indicesNum, sizeof(indicesNum), 1, fp);
 
 	std::vector<unsigned short> indices;
 	indices.resize(indicesNum);
 	fread(indices.data(), indices.size() * sizeof(indices[0]), 1, fp);
 
-
 	ID3D12Resource* idxBuff = nullptr;
-	// 設定は、バッファーのサイズ以外、頂点バッファーの設定を使いまわしてよい
+	// 設定は、バッファーのサイズ以外、頂点バッファーの設定を使い回してよい
 	resdesc.Width = indices.size() * sizeof(indices[0]);
 	result = _dev->CreateCommittedResource(
 		&heapprop,
@@ -574,7 +614,7 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	unsigned int materialNum; // マテリアル数
 	fread(&materialNum, sizeof(materialNum), 1, fp);
 
-	std::vector<PMDMaterial>pmdMaterials(materialNum);
+	std::vector<PMDMaterial> pmdMaterials(materialNum);
 
 	fread(
 		pmdMaterials.data(),
@@ -585,28 +625,29 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	// シェーダー側に投げられるマテリアルデータ
 	struct MaterialForHlsl
 	{
-		XMFLOAT3 diffuse;	// ディヒューズ色
-		float alpha;		// ディヒューズα
-		XMFLOAT3 specular;	// スペキュラ色
-		float specularity;	// スペキュラの強さ（乗算値）
-		XMFLOAT3 ambient;	// アンビエント色
+		XMFLOAT3 diffuse; // ディフューズ色
+		float alpha; // ディフューズα
+		XMFLOAT3 specular; // スペキュラ色
+		float specularity; // スペキュラの強さ（乗算値）
+		XMFLOAT3 ambient; // アンビエント色
 	};
 
 	// それ以外のマテリアルデータ
 	struct AdditionalMaterial
 	{
-		std::string texPath;	// テクスチャファイルパス
-		int toonIdx;			// トゥーン番号
-		bool edgeFlg;			// マテリアルごとの輪郭線フラグ
+		std::string texPath; // テクスチャファイルパス
+		int toonIdx; // トゥーン番号
+		bool edgeFlg; // マテリアルごとの輪郭線フラグ
 	};
 
 	// 全体をまとめるデータ
 	struct Material
 	{
-		unsigned int indicesNum;	// インデックス数
+		unsigned int indicesNum; // インデックス数
 		MaterialForHlsl material;
 		AdditionalMaterial additional;
 	};
+
 
 	std::vector<Material>materials(pmdMaterials.size());
 	// コピー
@@ -621,17 +662,73 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	}
 
 	vector<ID3D12Resource*> textureResources(materialNum);
+	vector<ID3D12Resource*>sphResources(materialNum, nullptr);
+	vector<ID3D12Resource*> spaResources(materialNum, nullptr);
 	for (int i = 0; i < pmdMaterials.size(); i++)
-	{
+	{ 
 		if (strlen(pmdMaterials[i].texFilePath) == 0)
 		{
 			textureResources[i] = nullptr;
 		}
+
+		std::string texFileName = pmdMaterials[i].texFilePath;
+		std::string sphFileName = "";
+		std::string spaFileName = "";
+
+		if (std::count(texFileName.begin(), texFileName.end(), '*') > 0) 
+		{ // スプリッタがある
+			auto namepair = SplitFileName(texFileName);
+			if (GetExtension(namepair.first) == "sph")
+			{
+				texFileName = namepair.second;
+				sphFileName = namepair.first;
+			}
+			else if (GetExtension(namepair.first) == "spa")
+			{
+				texFileName = namepair.second;
+				spaFileName = namepair.first;
+			}
+			else
+			{
+				texFileName = namepair.first; // 他の拡張子でもとにかく最初の物を入れておく
+				if (GetExtension(namepair.second) == "sph")
+				{
+					sphFileName = namepair.second;
+				}
+				else
+				{
+					spaFileName = namepair.second;
+				}
+			}
+		}
+		else
+		{
+			string ext = GetExtension(pmdMaterials[i].texFilePath);
+			if (GetExtension(pmdMaterials[i].texFilePath) == "sph")
+			{
+				sphFileName = pmdMaterials[i].texFilePath;
+				texFileName = "";
+			}
+			else if (ext == "spa")
+			{
+				spaFileName = pmdMaterials[i].texFilePath;
+				texFileName = "";
+			}
+		}
+
 		// モデルとテクスチャパスからアプリケーションからのテクスチャパスを得る
 		auto texFilePath = GetTexturePathFromModelAndTexPath(
-			strModelPath,
-			pmdMaterials[i].texFilePath);
+			strModelPath,texFileName.c_str());
 		textureResources[i] = LoadTextureFromFile(texFilePath, _dev);
+
+		if (sphFileName != "") {
+			auto sphFilePath = GetTexturePathFromModelAndTexPath(strModelPath, sphFileName.c_str());
+			sphResources[i] = LoadTextureFromFile(sphFilePath, _dev);
+		}
+		if (spaFileName != "") {
+			auto spaFilePath = GetTexturePathFromModelAndTexPath(strModelPath, spaFileName.c_str());
+			spaResources[i] = LoadTextureFromFile(spaFilePath, _dev);
+		}
 	}
 
 	// マテリアルバッファーを作成
@@ -668,7 +765,7 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	materialDescHeapDesc.Flags =
 		D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	materialDescHeapDesc.NodeMask = 0;
-	materialDescHeapDesc.NumDescriptors = materialNum * 2; // マテリアル数を指定
+	materialDescHeapDesc.NumDescriptors = materialNum * 4; // マテリアル数(定数1つ、テクスチャ3つ）
 	materialDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 
 	result = _dev->CreateDescriptorHeap(
@@ -694,15 +791,14 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	// 先頭の記録
 	auto matDescHeapH =
 		materialDescHeap->GetCPUDescriptorHandleForHeapStart();
-	UINT inc = _dev->GetDescriptorHandleIncrementSize(
+	UINT incSize = _dev->GetDescriptorHandleIncrementSize(
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	for (UINT i = 0; i < materialNum; ++i)
 	{
+		// マテリアル用定数バッファービュー
 		_dev->CreateConstantBufferView(&matCBVDesc, matDescHeapH);
-		matDescHeapH.ptr +=
-			_dev->GetDescriptorHandleIncrementSize(
-				D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		matDescHeapH.ptr += incSize;
 		matCBVDesc.BufferLocation += materialBuffSize;
 		
 		if (textureResources[i] == nullptr) 
@@ -720,7 +816,35 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 				matDescHeapH);
 		}
 
-		matDescHeapH.ptr += inc;
+		matDescHeapH.ptr += incSize;
+
+		if (sphResources[i] == nullptr)
+		{
+			srvDesc.Format = whiteTex->GetDesc().Format;
+			_dev->CreateShaderResourceView(
+				whiteTex, &srvDesc, matDescHeapH);
+		}
+		else
+		{
+			srvDesc.Format = sphResources[i]->GetDesc().Format;
+			_dev->CreateShaderResourceView(
+				sphResources[i], &srvDesc, matDescHeapH);
+		}
+		matDescHeapH.ptr += incSize;
+
+		if (spaResources[i] == nullptr)
+		{
+			srvDesc.Format = blackTex->GetDesc().Format;
+			_dev->CreateShaderResourceView(
+				blackTex, &srvDesc, matDescHeapH);
+		}
+		else
+		{
+			srvDesc.Format = spaResources[i]->GetDesc().Format;
+			_dev->CreateShaderResourceView(
+				spaResources[i], &srvDesc, matDescHeapH);
+		}
+		matDescHeapH.ptr += incSize;
 	}
 
 	fclose(fp);
@@ -869,7 +993,7 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 	// テクスチャ1 つ目（マテリアルとペア）
-	descTblRange[2].NumDescriptors = 1; // テクスチャ1 つ
+	descTblRange[2].NumDescriptors = 3; // テクスチャ3 つ（基本とsph とspa）
 	descTblRange[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV; // 種別はテクスチャ
 	descTblRange[2].BaseShaderRegister = 0; // 0 番スロットから
 	descTblRange[2].OffsetInDescriptorsFromTableStart =
@@ -1128,16 +1252,17 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	);
 
 	// シェーダー側に渡すための基本的な行列データ
-	struct MatricesData
+	struct SceneData
 	{
 		XMMATRIX world; // モデル本体を回転させたり移動させてたりする行列
-		XMMATRIX viewproj; // ビューとプロジェクション合成行列
-		float lightangle; // ライトの向き
+		XMMATRIX view; // ビュー行列
+		XMMATRIX proj; // プロジェクション行列
+		XMFLOAT3 eye; // 視点座標
 	};
 
 	ID3D12Resource* constBuff = nullptr;
 	auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-	resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(MatricesData) + 0xff) & ~0xff);
+	resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(SceneData) + 0xff) & ~0xff);
 	_dev->CreateCommittedResource(
 		&heapProp,
 		D3D12_HEAP_FLAG_NONE,
@@ -1147,11 +1272,12 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 		IID_PPV_ARGS(&constBuff)
 	);
 
-	MatricesData* mapMatrix; // マップ先を示すポインター
-	result = constBuff->Map(0, nullptr, (void**)&mapMatrix); // マップ
-	mapMatrix->world = worldMat;
-	mapMatrix->viewproj = viewMat * projMat;
-	mapMatrix->lightangle = 0;
+	SceneData* mapScene; // マップ先を示すポインター
+	result = constBuff->Map(0, nullptr, (void**)&mapScene); // マップ
+	mapScene->world = worldMat;
+	mapScene->view = viewMat;
+	mapScene->proj = projMat;
+	mapScene->eye = eye;
 
 	ID3D12DescriptorHeap* basicDescHeap = nullptr;
 	D3D12_DESCRIPTOR_HEAP_DESC descHeapDesc = {};
@@ -1193,10 +1319,10 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 			DispatchMessage(&msg);
 		}
 
-		angle += 1.0f;
-		mapMatrix->lightangle = angle * (XM_PI / 180); // ラジアンにする
-		mapMatrix->world = worldMat;
-		mapMatrix->viewproj = viewMat * projMat;
+		//angle += 1.0f;
+		mapScene->world = worldMat;
+		mapScene->view = viewMat;
+		mapScene->proj = projMat;
 
 		// DirectX処理
 		// バックバッファのインデックスを取得
@@ -1250,7 +1376,7 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 		unsigned int idxOffset = 0; // 最初はオフセットなし
 
 		UINT cbvsrvIncSize = _dev->GetDescriptorHandleIncrementSize(
-			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 2; // 2 倍
+			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 4;
 
 		for (auto& m : materials)
 		{
