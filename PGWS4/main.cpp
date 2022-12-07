@@ -4,6 +4,7 @@
 #include <dxgi1_6.h>
 #include <DirectXMath.h>
 #include <vector>
+#include <map>
 #include <d3dcompiler.h>
 #include <DirectXTex.h>
 #include <d3dx12.h>
@@ -96,12 +97,50 @@ std::wstring GetWideStringFromString(const std::string& str)
 
 ID3D12Resource* LoadTextureFromFile(std::string& texPath, ID3D12Device* dev)
 {
+	std::map<std::string, ID3D12Resource*> _resourceTable;
+
+	auto it = _resourceTable.find(texPath);
+	if (it != _resourceTable.end())
+	{
+		return it->second;
+	}
+
+	using LoadLambda_t = std::function<
+		HRESULT(const std::wstring& path, TexMetadata*, ScratchImage&)>;
+	static std::map<std::string, LoadLambda_t> loadLambdaTable;
+
+	if (loadLambdaTable.empty()) {
+		loadLambdaTable["sph"]
+			= loadLambdaTable["spa"]
+			= loadLambdaTable["bmp"]
+			= loadLambdaTable["png"]
+			= loadLambdaTable["jpg"]
+			= [](const std::wstring& path, TexMetadata* meta, ScratchImage& img)-> HRESULT
+		{
+			return LoadFromWICFile(path.c_str(), WIC_FLAGS_NONE, meta, img);
+		};
+		loadLambdaTable["tga"]
+			= [](const std::wstring& path, TexMetadata* meta, ScratchImage& img)-> HRESULT
+		{
+			return LoadFromTGAFile(path.c_str(), meta, img);
+		};
+		loadLambdaTable["dds"]
+			= [](const std::wstring& path, TexMetadata* meta, ScratchImage& img)->HRESULT
+		{
+			return LoadFromDDSFile(path.c_str(), DDS_FLAGS_NONE, meta, img);
+		};
+	}
+
 	TexMetadata metadata = {};
 	ScratchImage scratchImg = {};
 
-	HRESULT result = LoadFromWICFile(
-		GetWideStringFromString(texPath).c_str(),
-		WIC_FLAGS_NONE,
+	wstring wtexpath = GetWideStringFromString(texPath);
+	string ext = GetExtension(texPath);
+
+	if (loadLambdaTable.find(ext) == loadLambdaTable.end()) { return nullptr; }
+
+	auto result = loadLambdaTable[ext](
+		wtexpath,
 		&metadata,
 		scratchImg);
 
@@ -135,6 +174,7 @@ ID3D12Resource* LoadTextureFromFile(std::string& texPath, ID3D12Device* dev)
 		nullptr,
 		IID_PPV_ARGS(&texbuff)
 	);
+
 	if (FAILED(result)) { return nullptr; }
 
 	const Image* img = scratchImg.GetImage(0, 0, 0);
@@ -146,12 +186,14 @@ ID3D12Resource* LoadTextureFromFile(std::string& texPath, ID3D12Device* dev)
 		static_cast<UINT>(img->rowPitch),
 		static_cast<UINT>(img->slicePitch)
 	);
+
 	if (FAILED(result)) { return nullptr; }
 
+	_resourceTable[texPath] = texbuff;
 	return texbuff;
 }
 
-ID3D12Resource* CreateWhiteTexture(ID3D12Device* dev)
+ID3D12Resource* CreateMonoTexture(ID3D12Device* dev, unsigned int val)
 {
 	D3D12_HEAP_PROPERTIES texHeapProp = {};
 
@@ -185,7 +227,7 @@ ID3D12Resource* CreateWhiteTexture(ID3D12Device* dev)
 	if (FAILED(result)) { return nullptr; }
 
 	std::vector<unsigned char> data(4 * 4 * 4);
-	std::fill(data.begin(), data.end(), 0xff);
+	std::fill(data.begin(), data.end(), val);
 
 	result = whiteBuff->WriteToSubresource(
 		0,
@@ -195,6 +237,69 @@ ID3D12Resource* CreateWhiteTexture(ID3D12Device* dev)
 		static_cast<UINT>(data.size()));
 
 	return whiteBuff;
+}
+
+ID3D12Resource* CreateWhiteTexture(ID3D12Device* dev)
+{
+	return CreateMonoTexture(dev, 0xff);
+}
+
+ID3D12Resource* CreateBlackTexture(ID3D12Device* dev)
+{
+	return CreateMonoTexture(dev, 0x00);
+}
+
+ID3D12Resource* CreateGrayGradationTexture(ID3D12Device* dev)
+{
+	D3D12_HEAP_PROPERTIES texHeapProp = {};
+	texHeapProp.Type = D3D12_HEAP_TYPE_CUSTOM;
+	texHeapProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
+	texHeapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
+	texHeapProp.CreationNodeMask = 0;
+	texHeapProp.VisibleNodeMask = 0;
+
+	D3D12_RESOURCE_DESC resDesc = {};
+	resDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	resDesc.Width = 4;
+	resDesc.Height = 256;
+	resDesc.DepthOrArraySize = 1;
+	resDesc.SampleDesc.Count = 1;
+	resDesc.SampleDesc.Quality = 0;
+	resDesc.MipLevels = 1;
+	resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	resDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	resDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+	ID3D12Resource* gradBuff = nullptr;
+	HRESULT result = dev->CreateCommittedResource(
+		&texHeapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&resDesc,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		nullptr,
+		IID_PPV_ARGS(&gradBuff)
+	);
+
+	if (FAILED(result)) { return nullptr; }
+
+	std::vector<unsigned int> data(4 * 256);
+	auto it = data.begin();
+	unsigned int c = 0xff;
+	for (; it != data.end(); it += 4)
+	{
+		unsigned int col = (0xff << 24) | RGB(c, c, c);
+		std::fill(it, it + 4, col);
+		--c;
+	}
+
+	result = gradBuff->WriteToSubresource(
+		0,
+		nullptr,
+		data.data(),
+		4 * static_cast<UINT>(sizeof(unsigned int)),
+		static_cast<UINT>(sizeof(unsigned int) * data.size()));
+
+	return gradBuff;
 }
 
 size_t AlignmentedSize(size_t size, size_t alignment)
@@ -344,7 +449,7 @@ DXGI_SWAP_CHAIN_DESC swcDesc = {};
 result = _swapchain->GetDesc(&swcDesc);
 
 D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
-rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
 std::vector<ID3D12Resource*> _backBuffers(swcDesc.BufferCount);
@@ -410,6 +515,8 @@ result = _dev->CreateFence(_fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_fenc
 ShowWindow(hwnd, SW_SHOW);
 
 ID3D12Resource* whiteTex = CreateWhiteTexture(_dev);
+ID3D12Resource* blackTex = CreateBlackTexture(_dev);
+ID3D12Resource* gradTex = CreateGrayGradationTexture(_dev);
 
 struct PMDHeader
 {
@@ -420,7 +527,7 @@ struct PMDHeader
 
 char signature[3] = {};
 PMDHeader pmdheader = {};
-std::string strModelPath = "Model/初音ミクmetal.pmd";
+std::string strModelPath = "Model/初音ミク.pmd";
 FILE* fp;
 fopen_s(&fp, strModelPath.c_str(), "rb");
 
@@ -561,42 +668,70 @@ for (int i = 0; i < pmdMaterials.size(); ++i)
 	materials[i].material.specular = pmdMaterials[i].specular;
 	materials[i].material.specularity = pmdMaterials[i].specularity;
 	materials[i].material.ambient = pmdMaterials[i].ambient;
+	materials[i].additional.toonIdx = pmdMaterials[i].toonIdx;
 }
 
 vector<ID3D12Resource*> textureResources(materialNum);
 vector<ID3D12Resource*> sphResources(materialNum, nullptr);
+vector<ID3D12Resource*> spaResources(materialNum, nullptr);
+vector<ID3D12Resource*> toonResources(materialNum, nullptr);
 
 for (int i = 0; i < pmdMaterials.size(); ++i)
 {
+	string toonFilePath = "toon/";
+	char toonFileName[16];
+	sprintf_s(toonFileName, "toon%02d.bmp", pmdMaterials[i].toonIdx + 1);
+	toonFilePath += toonFileName;
+	toonResources[i] = LoadTextureFromFile(toonFilePath, _dev);
+
 	if (strlen(pmdMaterials[i].texFilePath) == 0)
 	{
-		textureResources[i] = nullptr;
 		continue;
 	}
 
 	std::string texFileName = pmdMaterials[i].texFilePath;
 	std::string sphFileName = "";
+	std::string spaFileName = "";
 
 	if (std::count(texFileName.begin(), texFileName.end(), '*') > 0)
 	{
 		auto namepair = SplitFileName(texFileName);
-		if (GetExtension(namepair.first) == "sph" ||
-			GetExtension(namepair.first) == "spa")
+		if (GetExtension(namepair.first) == "sph")
 		{
 			texFileName = namepair.second;
 			sphFileName = namepair.first;
 		}
+		else if (GetExtension(namepair.first) == "spa")
+		{
+			texFileName = namepair.second;
+			spaFileName = namepair.first;
+		}
 		else
 		{
 			texFileName = namepair.first;
-			sphFileName = namepair.second;
+
+			if (GetExtension(namepair.second) == "sph")
+			{
+				sphFileName = namepair.second;
+			}
+			else if (GetExtension(namepair.second) == "spa")
+			{
+				spaFileName = namepair.second;
+			}
 		}
 	}
 	else
 	{
-		if (GetExtension(pmdMaterials[i].texFilePath) == "sph")
+		string ext = GetExtension(pmdMaterials[i].texFilePath);
+
+		if (ext == "sph")
 		{
 			sphFileName = pmdMaterials[i].texFilePath;
+			texFileName = "";
+		}
+		else if (ext == "spa")
+		{
+			spaFileName = pmdMaterials[i].texFilePath;
 			texFileName = "";
 		}
 	}
@@ -609,6 +744,11 @@ for (int i = 0; i < pmdMaterials.size(); ++i)
 	{
 		auto sphFilePath = GetTexturePathFromModelAndTexPath(strModelPath, sphFileName.c_str());
 		sphResources[i] = LoadTextureFromFile(sphFilePath, _dev);
+	}
+
+	if (spaFileName != "") {
+		auto spaFilePath = GetTexturePathFromModelAndTexPath(strModelPath, spaFileName.c_str());
+		spaResources[i] = LoadTextureFromFile(spaFilePath, _dev);
 	}
 }
 
@@ -644,7 +784,7 @@ ID3D12DescriptorHeap* materialDescHeap = nullptr;
 D3D12_DESCRIPTOR_HEAP_DESC matDescHeapDesc = {};
 matDescHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 matDescHeapDesc.NodeMask = 0;
-matDescHeapDesc.NumDescriptors = materialNum * 3;
+matDescHeapDesc.NumDescriptors = materialNum * 5;
 matDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 
 result = _dev->CreateDescriptorHeap(
@@ -703,6 +843,32 @@ for (UINT i = 0; i < materialNum; ++i)
 		srvDesc.Format = sphResources[i]->GetDesc().Format;
 		_dev->CreateShaderResourceView(
 			sphResources[i], &srvDesc, matDescHeapH);
+	}
+	matDescHeapH.ptr += incSize;
+
+	if (spaResources[i] == nullptr)
+	{
+		srvDesc.Format = blackTex->GetDesc().Format;
+		_dev->CreateShaderResourceView(
+			blackTex, &srvDesc, matDescHeapH);
+	}
+	else
+	{
+		srvDesc.Format = spaResources[i]->GetDesc().Format;
+		_dev->CreateShaderResourceView(
+			spaResources[i], &srvDesc, matDescHeapH);
+	}
+	matDescHeapH.ptr += incSize;
+
+	if (toonResources[i] == nullptr)
+	{
+		srvDesc.Format = gradTex->GetDesc().Format;
+		_dev->CreateShaderResourceView(gradTex, &srvDesc, matDescHeapH);
+	}
+	else
+	{
+		srvDesc.Format = toonResources[i]->GetDesc().Format;
+		_dev->CreateShaderResourceView(toonResources[i], &srvDesc, matDescHeapH);
 	}
 	matDescHeapH.ptr += incSize;
 }
@@ -833,7 +999,7 @@ gpipeline.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
 gpipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 
 gpipeline.NumRenderTargets = 1;
-gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 
 gpipeline.SampleDesc.Count = 1;
 gpipeline.SampleDesc.Quality = 0;
@@ -852,7 +1018,7 @@ descTblRange[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
 descTblRange[1].BaseShaderRegister = 1;
 descTblRange[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-descTblRange[2].NumDescriptors = 2;
+descTblRange[2].NumDescriptors = 4;
 descTblRange[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 descTblRange[2].BaseShaderRegister = 0;
 descTblRange[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
@@ -871,19 +1037,29 @@ rootparam[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 rootSignatureDesc.pParameters = rootparam;
 rootSignatureDesc.NumParameters = 2;
 
-D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
-samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-samplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
-samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-samplerDesc.MinLOD = 0.0f;
-samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+D3D12_STATIC_SAMPLER_DESC samplerDesc[2] = {};
+samplerDesc[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+samplerDesc[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+samplerDesc[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+samplerDesc[0].BorderColor =
+D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+samplerDesc[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+samplerDesc[0].MaxLOD = D3D12_FLOAT32_MAX;
+samplerDesc[0].MinLOD = 0.0f;
+samplerDesc[0].ShaderVisibility =
+D3D12_SHADER_VISIBILITY_PIXEL;
+samplerDesc[0].ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+samplerDesc[0].ShaderRegister = 0;
 
-rootSignatureDesc.pStaticSamplers = &samplerDesc;
-rootSignatureDesc.NumStaticSamplers = 1;
+samplerDesc[1] = samplerDesc[0];
+samplerDesc[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+samplerDesc[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+samplerDesc[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+samplerDesc[1].Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+samplerDesc[1].ShaderRegister = 1;
+
+rootSignatureDesc.pStaticSamplers = &samplerDesc[0];
+rootSignatureDesc.NumStaticSamplers = 2;
 
 ID3DBlob* rootSigBlob = nullptr;
 result = D3D12SerializeRootSignature(
@@ -1068,10 +1244,12 @@ _cmdAllocator->Reset();
 _cmdList->Reset(_cmdAllocator, nullptr);
 
 
-struct MatricesData
+struct SceneData
 {
-	XMMATRIX world; // モデル本体を回転させたり移動させたりする行列
-	XMMATRIX viewproj; // ビューとプロジェクション合成行列
+	XMMATRIX world;
+	XMMATRIX view;
+	XMMATRIX proj;
+	XMFLOAT3 eye;
 };
 
 XMMATRIX worldMat = XMMatrixRotationY(XM_PIDIV4);
@@ -1099,7 +1277,7 @@ auto projMat = XMMatrixPerspectiveFovLH(
 
 ID3D12Resource* constBuff = nullptr;
 auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(MatricesData) + 0xff) & ~0xff);
+resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(SceneData) + 0xff) & ~0xff);
 _dev->CreateCommittedResource(
 	&heapProp,
 	D3D12_HEAP_FLAG_NONE,
@@ -1109,11 +1287,13 @@ _dev->CreateCommittedResource(
 	IID_PPV_ARGS(&constBuff)
 );
 
-MatricesData* mapMatrix;
-result = constBuff->Map(0, nullptr, (void**)&mapMatrix);
+SceneData* mapScene;
+result = constBuff->Map(0, nullptr, (void**)&mapScene);
 //*mapMatrix = matrix;
-mapMatrix->world = worldMat;
-mapMatrix->viewproj = viewMat * projMat;
+mapScene->world = worldMat;
+mapScene->view = viewMat;
+mapScene->proj = projMat;
+mapScene->eye = eye;
 
 ID3D12DescriptorHeap* basicDescHeap = nullptr;
 D3D12_DESCRIPTOR_HEAP_DESC descHeapDesc = {};
@@ -1148,10 +1328,11 @@ while (true)
 		DispatchMessage(&msg);
 	}
 	
-	angle += 0.1f;
+	angle += 0.02f;
 	worldMat = XMMatrixRotationY(angle);
-	mapMatrix->world = worldMat;
-	mapMatrix->viewproj = viewMat * projMat;
+	mapScene->world = worldMat;
+	mapScene->view = viewMat;
+	mapScene->proj = projMat;
 
 	auto bbIdx = _swapchain->GetCurrentBackBufferIndex();
 
@@ -1201,7 +1382,7 @@ while (true)
 	unsigned int idxOffset = 0;
 
 	UINT cbvsrvIncSize = _dev->GetDescriptorHandleIncrementSize(
-		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 3;
+		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 5;
 
 	for (auto& m : materials)
 	{

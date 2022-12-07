@@ -14,9 +14,12 @@ Output BasicVS(
 	min16uint weight : WEIGHT)
 {
 	Output output;
-	output.svpos = mul(mul(viewproj,world), pos);
+	pos = mul(world, pos);
+	output.ray = pos.xyz - eye;
+	output.svpos = mul(proj, mul(view, mul(world, pos)));
 	normal.w = 0;
 	output.normal = mul(world, normal);
+	output.vnormal = mul(view, output.normal);
 	output.uv = uv;
 	return output;
 }
