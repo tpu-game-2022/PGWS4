@@ -8,8 +8,11 @@ Output BasicVS(
 	min16uint weight : WEIGHT)
 {
 	Output output;  //ピクセルシェーダーに渡す値
-	output.svpos = mul(mat, pos);
+	pos = mul(world, pos);
+	output.ray = pos.xyz - eye;
+	output.svpos = mul(proj,mul(view,mul(world,pos)));
 	output.normal = normal;
 	output.uv = uv;
+	output.vnormal = mul(view, output.normal);
 	return output;
 }
