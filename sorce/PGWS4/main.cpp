@@ -34,14 +34,6 @@ using namespace DirectX;
 //@param 可変長引数
 //@remarks デバッグ用関数（デバッグ時にしか表示されない）
 
-//ディスクリプタレンジ種類
-typedef enum
-{
-	SRV,
-	CBV,
-	NONE,
-}RangeNumber;
-
 void DebugOutputFormatString(const char* format, ...)
 {
 #ifdef _DEBUG
@@ -215,6 +207,57 @@ ID3D12Resource* CreateWhiteTexture(ID3D12Device* dev)
 	return whiteBuff;
 }
 
+//黒いテクスチャの作成
+ID3D12Resource* CreateBlackTexture(ID3D12Device* dev)
+{
+	D3D12_HEAP_PROPERTIES texHeapProp = {};
+
+	texHeapProp.Type = D3D12_HEAP_TYPE_CUSTOM;
+	texHeapProp.CPUPageProperty =
+		D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
+	texHeapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
+	texHeapProp.CreationNodeMask = 0; //単一アダプターの為の0
+	texHeapProp.VisibleNodeMask = 0;//おなじく
+
+	D3D12_RESOURCE_DESC resDesc = {};
+	resDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	resDesc.Width = 4;
+	resDesc.Height = 4;
+	resDesc.DepthOrArraySize = 1;
+	resDesc.SampleDesc.Count = 1;
+	resDesc.SampleDesc.Quality = 0;
+	resDesc.MipLevels = 1;
+	resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	resDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	resDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+	//バッファー作成
+	ID3D12Resource* whiteBuff = nullptr;
+	auto result = dev->CreateCommittedResource(
+		&texHeapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&resDesc,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		nullptr,
+		IID_PPV_ARGS(&whiteBuff)
+	);
+
+	if (FAILED(result)) { return nullptr; }
+
+	vector<unsigned char> data(4 * 4 * 4);
+	fill(data.begin(), data.end(), 0x00); //全部0
+
+	//データ転送
+	result = whiteBuff->WriteToSubresource(
+		0,
+		nullptr,
+		data.data(),
+		4 * 4,
+		static_cast<UINT>(data.size()));
+
+	return whiteBuff;
+}
+
 //OSのイベントに応答する処理(書かないといけない)
 LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
@@ -233,6 +276,28 @@ LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 size_t AlignmentedSize(size_t size, size_t alignment)
 {
 	return size + alignment - size % alignment;
+}
+
+//ファイル名から拡張子取得
+string GetExtension(const string& path)
+{
+	int idx = static_cast<int>(path.rfind('.'));
+	return path.substr(idx + 1, path.length() - idx - 1);
+}
+
+//テクスチャのパスをセパレーター文字で分離する
+pair<string, string>SplitFileName(
+	const string& path, const char splitter = '*')
+{
+	//[*]等の位置を調べる
+	int idx = static_cast<int>(path.find(splitter));
+	pair<string, string> ret;
+	//「*」等の前の文字列
+	ret.first = path.substr(0, idx);
+	//「*」等の後の文字列
+	ret.second = path.substr(idx + 1, path.length() - idx - 1);
+	return ret;
+
 }
 
 #ifdef _DEBUG
@@ -420,7 +485,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	heapDesc.NodeMask = 0;
 	//裏表の2つ
-	heapDesc.NumDescriptors = 2;
+	heapDesc.NumDescriptors = 3;
 	//指定なし
 	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	ID3D12DescriptorHeap* rtvHeaps = nullptr;
@@ -431,8 +496,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	result = _swapchain->GetDesc(&swcDesc);
 
 	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
-	rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;//ガンマ補正あり
-	//rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;//ガンマ補正なし
+	//rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;//ガンマ補正あり
+	rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;//ガンマ補正なし
 	rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
 	//ディスクリプタをバッファの数だけ生成
@@ -564,7 +629,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	char signature[3] = {}; //シグネチャ
 	PMDHeader pmdheader = {};
 
-	string strModelPath = "Model/初音ミク.pmd";
+	string strModelPath = "Model/初音ミクmetal.pmd";
 	FILE* fp;
 	fopen_s(&fp, strModelPath.c_str(), "rb");
 
@@ -772,7 +837,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	materialDescHeapDesc.Flags =
 		D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	materialDescHeapDesc.NodeMask = 0;
-	materialDescHeapDesc.NumDescriptors = materialNum * 2;
+	materialDescHeapDesc.NumDescriptors = materialNum * 4;
 	materialDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 
 	result = _dev->CreateDescriptorHeap(
@@ -780,9 +845,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	//ホワイトテクスチャ呼び出し
 	ID3D12Resource* whiteTex = CreateWhiteTexture(_dev);
+	//黒テクスチャ作成
+	ID3D12Resource* blackTex = CreateBlackTexture(_dev);
 
 	//テクスチャ呼び出し処理
 	vector<ID3D12Resource*>textureResources(materialNum);
+	//スフィアマップの読み込み
+	vector<ID3D12Resource*>sphResources(materialNum, nullptr);
+	//加算スフィアマップの読み込み
+	vector<ID3D12Resource*>spaResources(materialNum, nullptr);
 
 	for (int i = 0; i < pmdMaterials.size(); ++i)
 	{
@@ -791,11 +862,73 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			textureResources[i] = nullptr; //(continueを入れるべき)
 		}
 
+		//[*]がある時だけ処理する
+		string texFileName = pmdMaterials[i].texFilePath;
+		string sphFileName = "";
+		string spaFileName = "";
+
+		if (count(texFileName.begin(), texFileName.end(), '*') > 0)
+		{
+			//スプリッタがある
+			auto namepair = SplitFileName(texFileName);
+			//spaもスフィアマップ(加算スフィアマップ)
+			if (GetExtension(namepair.first) == "sph")
+			{
+				texFileName = namepair.second;
+				sphFileName = namepair.first;
+			}
+			else if(GetExtension(namepair.first) == "spa")
+			{
+				texFileName = namepair.second;
+				spaFileName = namepair.first;
+			}
+			else
+			{
+				//まずはテクスチャファースト
+				texFileName = namepair.first;
+				if (GetExtension(namepair.second) == "sph")
+				{
+					sphFileName = namepair.second;
+				}
+				else if (GetExtension(namepair.second) == "spa")
+				{
+					spaFileName = namepair.second;
+				}
+			}
+		}
+		else
+		{
+			string ext = GetExtension(pmdMaterials[i].texFilePath);
+			//スフィアマップだけでアベル度がない場合にも対応
+			if (ext == "sph")
+			{
+				sphFileName = pmdMaterials[i].texFilePath;
+				texFileName = "";
+			}
+			else if (ext == "spa")
+			{
+				spaFileName = pmdMaterials[i].texFilePath;
+				texFileName = "";
+			}
+		}
+
 		//モデルとテクスチャパスからアプリケーション空のテクスチャパスを得る
 		auto texFilePath = GetTexturePathFromModelAndTexPath(
 			strModelPath,
-			pmdMaterials[i].texFilePath);
+			texFileName.c_str());
 		textureResources[i] = LoadTextureFromFile(texFilePath, _dev);
+
+		if (sphFileName != "")
+		{
+			auto sphFilePath = GetTexturePathFromModelAndTexPath(strModelPath, sphFileName.c_str());
+			sphResources[i] = LoadTextureFromFile(sphFilePath, _dev);
+		}
+
+		if (spaFileName != "")
+		{
+			auto spaFilePath = GetTexturePathFromModelAndTexPath(strModelPath, spaFileName.c_str());
+			spaResources[i] = LoadTextureFromFile(spaFilePath, _dev);
+		}
 	}
 
 	//ディスクリプタヒープ上にビューを作成
@@ -819,7 +952,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	//先頭を記録
 	auto matDescHeapH =
 		materialDescHeap->GetCPUDescriptorHandleForHeapStart();
-	UINT inc =_dev->GetDescriptorHandleIncrementSize(
+	UINT incSize =_dev->GetDescriptorHandleIncrementSize(
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	//ビューを作成
@@ -828,7 +961,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		//マテリアル用定数バッファービュー
 		_dev->CreateConstantBufferView(&matCBVDesc, matDescHeapH);
 
-		matDescHeapH.ptr += inc;
+		matDescHeapH.ptr += incSize;
 		matCBVDesc.BufferLocation += materialBuffSize;
 
 		//シェーダーリソースビュー
@@ -847,7 +980,41 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 				matDescHeapH);
 		}
 
-		matDescHeapH.ptr += inc;
+		matDescHeapH.ptr += incSize;
+
+		if (sphResources[i] == nullptr)
+		{
+			srvDesc.Format = whiteTex->GetDesc().Format;
+			_dev->CreateShaderResourceView(whiteTex, &srvDesc, matDescHeapH);
+		}
+		else
+		{
+			srvDesc.Format = sphResources[i]->GetDesc().Format;
+
+			_dev->CreateShaderResourceView(
+				sphResources[i],
+				&srvDesc,
+				matDescHeapH);
+		}
+
+		matDescHeapH.ptr += incSize;
+
+		if (spaResources[i] == nullptr)
+		{
+			srvDesc.Format = blackTex->GetDesc().Format;
+			_dev->CreateShaderResourceView(blackTex, &srvDesc, matDescHeapH);
+		}
+		else
+		{
+			srvDesc.Format = spaResources[i]->GetDesc().Format;
+
+			_dev->CreateShaderResourceView(
+				spaResources[i],
+				&srvDesc,
+				matDescHeapH);
+		}
+
+		matDescHeapH.ptr += incSize;
 	}
 
 	//閉じる
@@ -995,7 +1162,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	//その他設定
 	//レンダーターゲットの設定
 	gpipeline.NumRenderTargets = 1;
-	gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; //0～1に正規化されたRGBA
+	gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM; //0～1に正規化されたRGBA
 	//アンチエイリアスのサンプル数設定
 	gpipeline.SampleDesc.Count = 1; //サンプリングは1ピクセルに付き1
 	gpipeline.SampleDesc.Quality = 0;//クオリティは最低
@@ -1024,7 +1191,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	descTblRange[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 	//テクスチャ一つ目
-	descTblRange[2].NumDescriptors = 1; //テクスチャ1つ
+	descTblRange[2].NumDescriptors = 3; //テクスチャ3つ
 	descTblRange[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV; //種別は定数
 	descTblRange[2].BaseShaderRegister = 0; //0スロットから
 	descTblRange[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
@@ -1102,10 +1269,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	//-----------------------------------------------------------------------------------
 
 	//シェーダー側に渡すための基本的な行列データ
-	struct MatricesData
+	struct SceneData
 	{
-		XMMATRIX world;
-		XMMATRIX viewproj;
+		XMMATRIX world; //ワールド行列
+		XMMATRIX view; //ビュー行列
+		XMMATRIX proj; //プロジェクション行列
+		XMFLOAT3 eye; //視点座標
 	};
 
 	//ビューポート-----------------------------------------------------------------------
@@ -1328,7 +1497,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	//256バイトアラインメント、下位8ビットが0であればそのまま
 	//そうでなければ256単位で切り上げ
-	resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(MatricesData) + 0xff) & ~0xff);
+	resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(SceneData) + 0xff) & ~0xff);
 	_dev->CreateCommittedResource(
 		&heapProp,
 		D3D12_HEAP_FLAG_NONE,
@@ -1339,10 +1508,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	);
 	//------------------------------------------------------------------------------
 	//マップにより定数のコピー
-	MatricesData* mapMatrix;
-	result = constBuff->Map(0, nullptr, (void**)&mapMatrix); //マップ
-	mapMatrix->world = worldMat;
-	mapMatrix->viewproj = viewMat * projMat;
+	SceneData* mapScene;
+	result = constBuff->Map(0, nullptr, (void**)&mapScene); //マップ
+	mapScene->world = worldMat;
+	mapScene->view = viewMat;
+	mapScene->proj = projMat;
+	mapScene->eye = eye;
 	//------------------------------------------------------------------------------
 	//定数バッファービューをディスクリプタヒープに追加
 	//シェーダーリソースビュー--------------------------------------
@@ -1395,8 +1566,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		//回転
 		angle += 0.01f;
 		worldMat = XMMatrixRotationY(angle);
-		mapMatrix->world = worldMat;
-		mapMatrix->viewproj = viewMat * projMat;
+		mapScene->world = worldMat;
+		mapScene->view = viewMat;
+		mapScene->proj = projMat;
 
 		//---------------------------------------------------------------------------
 		//スワップチェーンの動作
@@ -1457,7 +1629,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		unsigned int idx0ffset = 0; //最初はオフセットなし
 
 		UINT cbvsrvIncSize = _dev->GetDescriptorHandleIncrementSize(
-			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 2;
+			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 4;
 
 		for (auto& m : materials)
 		{

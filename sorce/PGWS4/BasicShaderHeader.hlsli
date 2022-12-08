@@ -1,11 +1,16 @@
 struct Output
 {
 	float4 svpos:SV_POSITION;
-	float4 normal:NORMAL; //法線ベクトル
+	float4 normal:NORMAL0; //法線ベクトル
+	float4 vnormal : NORMAL1;//ビュー変換後の法線ベクトル
+	float3 ray : VECTOR;//ベクトル
 	float2 uv:TEXCOORD;
 };
 
 Texture2D<float4>tex : register(t0); //0番スロットに設定されたテクスチャ
+Texture2D<float4>sph : register(t1); //1番スロットに設定されたテクスチャ
+Texture2D<float4>spa : register(t2); //1番スロットに設定されたテクスチャ
+
 SamplerState smp:register(s0); //0番スロットに設定されたサンプラー
 
 //cbuffer:定数バッファをまとめるキーワード
@@ -13,7 +18,9 @@ SamplerState smp:register(s0); //0番スロットに設定されたサンプラー
 cbuffer cbuff0 : register(b0)
 {
 	matrix world;
-	matrix viewproj;
+	matrix view;
+	matrix proj;
+	float3 eye;
 };
 
 //定数バッファー1
