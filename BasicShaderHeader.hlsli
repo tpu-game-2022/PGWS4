@@ -2,8 +2,32 @@
 struct Output
 {
 	float4 svpos : SV_POSITION; //システム用頂点座標
-	float2 uv :TEXCOORD; // uv 値
+	float4 normal : NORMA0L;//法線ベクトル
+	float4 vnormal : NORMAL1;//ビュー返還後の法線ベクトル
+	float2 uv : TEXCOORD; // uv 値
+	float3 ray : VECTOR;//ベクトル
 };
 
 Texture2D<float4>tex:register(t0);//0番スロットに設定されたテクスチャ
+Texture2D<float4>sph:register(t1);//１番スロットに設定されたテクスチャ
+Texture2D<float4>spa:register(t2);//２番スロットに設定されたテクスチャ
 SamplerState smp:register(s0);//0番スロットに設定されたサンプラー
+
+//定数バッファー
+cbuffer cbuff0 : register(b0)
+{
+	//メンバーをC++の構造体と同じ順序で書く
+	matrix world;//ワールド変換行列
+	matrix view;//ビュー行列
+	matrix proj;//プロジェクション行列
+	float3 eye;//視点
+};
+
+//定数バッファー
+//マテリアル用
+cbuffer SceneBuffer : register(b1)
+{
+	float4 diffuse;//ディフューズ色
+	float4 specular;// スペキュラ
+	float3 ambient;//アンビエント
+};
