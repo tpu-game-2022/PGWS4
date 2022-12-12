@@ -8,9 +8,12 @@ Output BasicVS(
 	min16uint weight : WEIGHT)
 {
 	Output output;   // ピクセルシェーダーに渡す値
-	output.svpos = mul(mul(viewproj, world), pos);   // シェーダーでは列優先なので注意
+	pos = mul(world, pos);
+	output.ray = pos.xyz - eye;
+	output.svpos = mul(proj, mul(view, mul(world, pos)));   // シェーダーでは列優先なので注意
 	normal.w = 0;   // ここが重要（平行移動成分を無効にする）
 	output.normal = mul(world, normal);   // 法線にもワールド変換を行う
+	output.vnormal = mul(view, output.normal);
 	output.uv = uv;
 	return output;
 }
