@@ -1328,7 +1328,7 @@ while (true)
 		DispatchMessage(&msg);
 	}
 	
-	angle += 0.02f;
+	angle += 0.0f;
 	worldMat = XMMatrixRotationY(angle);
 	mapScene->world = worldMat;
 	mapScene->view = viewMat;

@@ -20,12 +20,14 @@ float4 BasicPS(Output input) : SV_TARGET
 
 #ifdef TOON
 	float3 toonDif = toon.Sample(smpToon, float2(0, 1.0 - diffuseB)).rgb;
+	float3 toonSpecular = toon.Sample(smpToon, float2(0, 1.0 - specularB)).rgb;
+
 	return float4(lightColor *
 		(texColor.rgb
 			* sph.Sample(smp, sphereMapUV).rgb
 			* (ambient + toonDif * diffuse.rgb)
 			+ spa.Sample(smp, sphereMapUV).rgb
-			+ specularB * specular.rgb)
+			+ toonSpecular * specular.rgb)
 		, diffuse.a);
 #endif
 
