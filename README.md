@@ -35,5 +35,16 @@
 # 12月7日(水)までの授業の進捗
 ![miku](https://user-images.githubusercontent.com/71643403/206132396-dfd72324-a6fd-41e2-9fa1-e0ecb655aa63.gif)
 
+# 12月14日(水)までの授業の進捗
+〇チャレンジ課題〇
+-before-
+![2022-12-14](https://user-images.githubusercontent.com/71643403/207550957-9a25766e-39d4-4bd5-b0fa-260ed841b550.png)
+
+-after-
+![2022-12-14 (3)](https://user-images.githubusercontent.com/71643403/207550978-b6849824-e261-4fab-b200-878eb6e8f3cd.png)
+
+〇Unity〇
+![2022-12-14 (4)](https://user-images.githubusercontent.com/71643403/207551252-ca7e4c07-9190-4d44-b14a-e76c2cbf6b7b.png)
+
 # 締め切り
 次の授業の2日前（水曜日の授業であれば月曜日一杯）
