@@ -13,5 +13,4 @@
 
 # 画像
 
-
-![スクリーンショット (141)](https://user-images.githubusercontent.com/71632467/206355863-c8a3bba5-c4b6-4b38-a394-fef808281a16.png)
+![スクリーンショット (150)](https://user-images.githubusercontent.com/71632467/207768918-c55d92eb-af81-4774-abeb-aeac5756fb59.png)
