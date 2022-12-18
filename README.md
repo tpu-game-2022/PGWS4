@@ -9,9 +9,11 @@
 
 # 結果画像
 ８章 チャレンジ課題 スぺキュラをトゥーンに。
+
 ![チャレンジ画像スぺキュラトゥーン](https://user-images.githubusercontent.com/71791660/208279398-63d461c0-9de5-4e45-856b-3c51d07dcd71.gif)
 
 もっとかっこいいトゥーン(黒強調)
+
 ![チャレンジ画像黒強調](https://user-images.githubusercontent.com/71791660/208279400-a0c6858d-bfb5-471d-914f-8252817ea3f7.gif)
 
 
