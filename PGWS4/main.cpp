@@ -1,14 +1,15 @@
-#include<Windows.h>
-#include<tchar.h>
-#include<d3d12.h>
-#include<d3dx12.h>
-#include<dxgi1_6.h>
-#include<DirectXMath.h>
-#include<vector>
-#include<d3dcompiler.h>
-#include<DirectXTex.h>
+#include <Windows.h>
+#include <tchar.h>
+#include <d3d12.h>
+#include <d3dx12.h>
+#include <dxgi1_6.h>
+#include <DirectXMath.h>
+#include <map>
+#include <vector>
+#include <d3dcompiler.h>
+#include <DirectXTex.h>
 #ifdef _DEBUG
-#include<iostream>
+#include <iostream>
 #endif
 
 #pragma comment(lib,"DirectXTex.lib")
@@ -127,13 +128,51 @@ std::wstring GetWideStringFromString(const std::string& str)
 
 ID3D12Resource* LoadtextureFromFile(std::string& texpath, ID3D12Device* dev)
 {
+	std::map<std::string, ID3D12Resource*>_resourceTable;
+
+	auto it = _resourceTable.find(texpath);
+	if (it != _resourceTable.end())
+	{
+		//テーブル内にあったらロードするのではなく
+		//マップ内のリソースを返す
+		return it->second;
+	}
+
+	using LoadLambda_t = std::function<
+		HRESULT(const std::wstring& path, TexMetadata*, ScratchImage&)>;
+	static std::map <std::string, LoadLambda_t> loadLambdaTable;
+
+	if (loadLambdaTable.empty()) {
+		loadLambdaTable["sph"]
+			= loadLambdaTable["spa"]
+			= loadLambdaTable["bmp"]
+			= loadLambdaTable["png"]
+			= loadLambdaTable["jpg"]
+			= [](const std::wstring& path, TexMetadata* meta, ScratchImage& img)->HRESULT
+		{
+			return LoadFromWICFile(path.c_str(), WIC_FLAGS_NONE, meta, img);
+		};
+		loadLambdaTable["tga"]
+			= [](const std::wstring& path, TexMetadata* meta, ScratchImage& img)->HRESULT
+		{
+			return LoadFromTGAFile(path.c_str(), meta, img);
+		};
+		loadLambdaTable["dds"]
+			= [](const std::wstring& path, TexMetadata* meta, ScratchImage& img)->HRESULT
+		{
+			return LoadFromDDSFile(path.c_str(), DDS_FLAGS_NONE, meta, img);
+		};
+	}
+
 	//WIC テクスチャのロード
 	TexMetadata metadata = {};
 	ScratchImage scratchImg = {};
 
-	HRESULT result = LoadFromWICFile(
-		GetWideStringFromString(texpath).c_str(),
-		WIC_FLAGS_NONE,
+	std::wstring wtexpath = GetWideStringFromString(texpath); //テクスチャのファイルパス
+	std::string ext = GetExtension(texpath); //拡張子を取得
+	if (loadLambdaTable.find(ext) == loadLambdaTable.end()) { return nullptr; } //おかしな拡張子
+	auto result = loadLambdaTable[ext](
+		wtexpath,
 		&metadata,
 		scratchImg);
 
@@ -183,6 +222,7 @@ ID3D12Resource* LoadtextureFromFile(std::string& texpath, ID3D12Device* dev)
 	);
 	if (FAILED(result)) { return nullptr; }
 
+	_resourceTable[texpath] = texbuff;
 	return texbuff;
 }
 
@@ -277,6 +317,61 @@ ID3D12Resource* CreateBlackTexture(ID3D12Device* dev) {
 		static_cast<UINT>(data.size()));
 
 	return blackBuff;
+}
+
+ID3D12Resource* CreateGrayGradationTexture(ID3D12Device* dev)
+{
+
+	D3D12_HEAP_PROPERTIES texHeapProp = {};
+	texHeapProp.Type = D3D12_HEAP_TYPE_CUSTOM;//特殊な設定なのでdefaultでもuploadでもなく
+	texHeapProp.CPUPageProperty = 
+		D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;//ライトバックで
+	texHeapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;//転送がL0つまりCPU側から直で
+	texHeapProp.CreationNodeMask = 0;//単一アダプタのため0
+	texHeapProp.VisibleNodeMask = 0;//単一アダプタのため0
+
+	D3D12_RESOURCE_DESC resDesc = {};
+	resDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	resDesc.Width = 4;//幅
+	resDesc.Height = 256;//高さ
+	resDesc.DepthOrArraySize = 1;
+	resDesc.SampleDesc.Count = 1;
+	resDesc.SampleDesc.Quality = 0;//
+	resDesc.MipLevels = 1;//
+	resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	resDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;//レイアウトについては決定しない
+	resDesc.Flags = D3D12_RESOURCE_FLAG_NONE;//とくにフラグなし
+
+	ID3D12Resource* gradBuff = nullptr;
+	HRESULT result = dev->CreateCommittedResource(
+		&texHeapProp,
+		D3D12_HEAP_FLAG_NONE,//特に指定なし
+		&resDesc,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		nullptr,
+		IID_PPV_ARGS(&gradBuff)
+	);
+	if (FAILED(result)) { return nullptr; }
+
+	//上が白くて下が黒いテクスチャデータを作成
+	std::vector<unsigned int> data(4 * 256);
+	auto it = data.begin();
+	unsigned int c = 0xff;
+	for (; it != data.end(); it += 4) {
+		//RGBAが逆並びしているためRGBマクロと0xff<<24を用いて表す。
+		unsigned int col = (0xff << 24) | RGB(c, c, c);
+		std::fill(it, it + 4, col);
+		--c;
+	}
+
+	result = gradBuff->WriteToSubresource(
+		0,
+		nullptr,
+		data.data(),
+		4 * static_cast<UINT>(sizeof(unsigned int)),
+		static_cast<UINT>(sizeof(unsigned int) * data.size()));
+
+	return gradBuff;
 }
 
 //アライメントのそろえたサイズを返す
@@ -465,7 +560,9 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	char signature[3] = {};  //シグネチャ
 	PMDHeader pmdheader = {};
-	std::string strModelPath = "Model/初音ミクmetal.pmd";
+	std::string strModelPath = "Model/初音ミク.pmd";
+	//std::string strModelPath = "Model/初音ミクmetal.pmd";
+	//std::string strModelPath = "Model/巡音ルカ.pmd";
 	FILE* fp;
 	fopen_s(&fp, strModelPath.c_str(), "rb");
 
@@ -621,6 +718,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		materials[i].material.specular = pmdMaterials[i].specular;
 		materials[i].material.specularity = pmdMaterials[i].specularity;
 		materials[i].material.ambient = pmdMaterials[i].ambient;
+		materials[i].additional.toonIdx = pmdMaterials[i].toonIdx;
 	}
 
 	//マテリアルバッファーを作成
@@ -652,11 +750,21 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	ID3D12Resource* whiteTex = CreateWhiteTexture(_dev);
 	ID3D12Resource* blackTex = CreateBlackTexture(_dev);
-	vector<ID3D12Resource*>textureResources(materialNum, nullptr);
-	vector<ID3D12Resource*>sphResources(materialNum, nullptr);
-	vector<ID3D12Resource*>spaResources(materialNum, nullptr);
+	ID3D12Resource* gradTex = CreateGrayGradationTexture(_dev);
+
+	std::vector<ID3D12Resource*>textureResources(materialNum, nullptr);
+	std::vector<ID3D12Resource*>sphResources(materialNum, nullptr);
+	std::vector<ID3D12Resource*>spaResources(materialNum, nullptr);
+	std::vector<ID3D12Resource*>toonResources(materialNum, nullptr);
 	for (int i = 0; i < pmdMaterials.size(); ++i)
 	{
+		//トゥーンリソースの読み込み
+		std::string toonFilePath = "toon/";
+		char toonFileName[16];
+		sprintf_s(toonFileName, "toon%02d.bmp", pmdMaterials[i].toonIdx + 1);
+		toonFilePath += toonFileName;
+		toonResources[i] = LoadtextureFromFile(toonFilePath, _dev);
+
 		if (strlen(pmdMaterials[i].texFilePath) == 0)
 		{
 			textureResources[i] = nullptr;
@@ -714,7 +822,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		}
 		if (spaFileName != "") {
 			auto spaFilePath = GetTexturePathFromModelAndTexPath(
-				strModelPath, sphFileName.c_str());
+				strModelPath, spaFileName.c_str());
 			spaResources[i] = LoadtextureFromFile(spaFilePath, _dev);
 		}
 	}
@@ -725,7 +833,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	materialDescHeapDesc.Flags =
 		D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	materialDescHeapDesc.NodeMask = 0;
-	materialDescHeapDesc.NumDescriptors = materialNum * 4;  //マテリアル数分(定数1つ、テクスチャ3つ)
+	materialDescHeapDesc.NumDescriptors = materialNum * 5;  //マテリアル数分(定数1つ、テクスチャ4つ)
 	materialDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 
 	result = _dev->CreateDescriptorHeap(
@@ -794,7 +902,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		}
 		matDescHeapH.ptr += incSize;
 
-		if (spaResources[i] = nullptr)
+		if (spaResources[i] == nullptr)
 		{
 			srvDesc.Format = blackTex->GetDesc().Format;
 			_dev->CreateShaderResourceView(
@@ -802,11 +910,24 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		}
 		else
 		{
-			srvDesc.Format = blackTex->GetDesc().Format;
+			srvDesc.Format = spaResources[i]->GetDesc().Format;
 			_dev->CreateShaderResourceView(
 				spaResources[i], &srvDesc, matDescHeapH);
 		}
 		matDescHeapH.ptr += incSize;
+
+		if (toonResources[i] == nullptr)
+		{
+			srvDesc.Format = gradTex->GetDesc().Format;
+			_dev->CreateShaderResourceView(gradTex, &srvDesc, matDescHeapH);
+		}
+		else
+		{
+			srvDesc.Format = toonResources[i]->GetDesc().Format;
+			_dev->CreateShaderResourceView(toonResources[i], &srvDesc, matDescHeapH);
+		}
+		matDescHeapH.ptr += incSize;
+
 	}
 
 	fclose(fp);
@@ -1010,30 +1131,38 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 	//テクスチャ1つ目（マテリアルとペア）
-	descTblRange[2].NumDescriptors = 3;  //テクスチャ3つ(基本とsphとspa)
+	descTblRange[2].NumDescriptors = 4;  //テクスチャ4つ(基本とsphとspaとトゥーン)
 	descTblRange[2].RangeType =
 		D3D12_DESCRIPTOR_RANGE_TYPE_SRV;  //種別はテクスチャ
-	descTblRange[2].BaseShaderRegister = 0;  //0版スロットから
+	descTblRange[2].BaseShaderRegister = 0;  //0番スロットから
 	descTblRange[2].OffsetInDescriptorsFromTableStart =
 		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
-	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;  //横方向の繰り返し
-	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;  //縦方向の繰り返し
-	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;  //奥行きの繰り返し
-	samplerDesc.BorderColor =
+	D3D12_STATIC_SAMPLER_DESC samplerDesc[2] = {};
+	samplerDesc[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;  //横方向の繰り返し
+	samplerDesc[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;  //縦方向の繰り返し
+	samplerDesc[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;  //奥行きの繰り返し
+	samplerDesc[0].BorderColor =
 		D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;  //ボーダーは黒
 	//補間しない（ニアレストネイバー法：最近傍補間)
 	//samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
-	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;  //線形補間
-	samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;  //ミップマップ最大値
-	samplerDesc.MinLOD = 0.0f; //ミップマップ最小値
-	samplerDesc.ShaderVisibility =
+	samplerDesc[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;  //線形補間
+	samplerDesc[0].MaxLOD = D3D12_FLOAT32_MAX;  //ミップマップ最大値
+	samplerDesc[0].MinLOD = 0.0f; //ミップマップ最小値
+	samplerDesc[0].ShaderVisibility =
 		D3D12_SHADER_VISIBILITY_PIXEL;  //ピクセルシェーダーから見える
-	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;  //リサンプリングしない
+	samplerDesc[0].ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;  //リサンプリングしない
+	samplerDesc[0].ShaderRegister = 0; //シェーダースロット番号を忘れないように
 
-	rootSignaterDesc.pStaticSamplers = &samplerDesc;
-	rootSignaterDesc.NumStaticSamplers = 1;
+	samplerDesc[1] = samplerDesc[0];//変更点以外をコピー
+	samplerDesc[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP; //横方向の繰り返し
+	samplerDesc[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP; //縦方向の繰り返し
+	samplerDesc[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP; //奥行きの繰り返し
+	samplerDesc[1].Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;     //補間しない(ニアレストネイバー)
+	samplerDesc[1].ShaderRegister = 1; //シェーダースロット番号を忘れないように
+
+	rootSignaterDesc.pStaticSamplers = &samplerDesc[0];
+	rootSignaterDesc.NumStaticSamplers = 2;
 
 	D3D12_ROOT_PARAMETER rootparam[2] = {};
 	rootparam[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
@@ -1071,8 +1200,8 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	gpipline.pRootSignature = rootSigunature;
 
-	ID3D12PipelineState* _pipelinesture = nullptr;
-	result = _dev->CreateGraphicsPipelineState(&gpipline, IID_PPV_ARGS(&_pipelinesture));
+	ID3D12PipelineState* _pipelinestate = nullptr;
+	result = _dev->CreateGraphicsPipelineState(&gpipline, IID_PPV_ARGS(&_pipelinestate));
 
 	//WICテクスチャのロード
 	TexMetadata metadata = {};
@@ -1380,7 +1509,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			DispatchMessage(&msg);
 		}
 
-		angle = 0.1f;
+		angle = -0.2f;
 		worldMat = XMMatrixRotationY(angle);
 		mapScene->world = worldMat;
 		mapScene->view = viewMat;
@@ -1400,7 +1529,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;  //今からRT状態
 		_cmdList->ResourceBarrier(1, &BarrierDesc);  //バリア指定実行
 
-		_cmdList->SetPipelineState(_pipelinesture);
+		_cmdList->SetPipelineState(_pipelinestate);
 
 
 		//レンダーターゲットを指定
@@ -1454,7 +1583,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		unsigned int idx0ffset = 0;  //最初はオフセットなし
 
 		UINT cbvsrvIncSize = _dev->GetDescriptorHandleIncrementSize(
-			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 4;
+			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 5;
 
 		for (auto& m : materials)
 		{
@@ -1468,7 +1597,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			idx0ffset += m.indicesNum;
 		}
 
-		_cmdList->DrawIndexedInstanced(indicesNum, 1, 0, 0, 0);
+		//_cmdList->DrawIndexedInstanced(indicesNum, 1, 0, 0, 0);
 
 		//前後だけ入れ替える
 		BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -1495,7 +1624,7 @@ int WINAOI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		}
 
 		_cmdAllocator->Reset(); // キューをクリア
-		_cmdList->Reset(_cmdAllocator, _pipelinesture); //キューをクリア
+		_cmdList->Reset(_cmdAllocator, _pipelinestate); //キューをクリア
 		_swapchain->Present(1, 0); //再びコマンドリストを溜める準備
 	}
 	//もうクラスは使わないので登録解除する
