@@ -49,5 +49,8 @@ https://user-images.githubusercontent.com/71632844/202159977-cbac4cee-3ea6-4810-
 
 ![DX12テスト 2022_11_30 17_51_52](https://user-images.githubusercontent.com/71632844/204753668-9a37c8d6-ee78-4c63-b2f4-df2af8008534.png)
 
+# 第11回課題 結果画像
+スペキュラとアンビエントを実装しました。
 
+![DX12テスト 2022_12_07 18_49_47](https://user-images.githubusercontent.com/71632844/206148697-c88b8ccc-a770-4ac5-b62f-7186a3dcf770.png)
 
