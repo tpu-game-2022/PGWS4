@@ -5,6 +5,7 @@
 #include <d3dx12.h>
 #include <dxgi1_6.h>
 #include <DirectXMath.h>
+#include <map>
 #include <vector>
 #include <string>
 #include <d3dcompiler.h>
@@ -130,15 +131,56 @@ std::pair<std::string, std::string> SplitFileName(
 
 ID3D12Resource* LoadTextureFromFile(std::string& texPath, ID3D12Device* dev)
 {
-	// WIC テクスチャのロード
+	// ファイル名パスとリソースのマップテーブル
+	std::map<string, ID3D12Resource*>_resourceTable;
+
+	auto it = _resourceTable.find(texPath);
+	if (it != _resourceTable.end())
+	{
+		// テーブル内にあったらロードするのではなく
+		// マップ内のリソースを返す
+		return it->second;
+	}
+
+	using LoadLambda_t = std::function<
+		HRESULT(const std::wstring& path, TexMetadata*, ScratchImage&)>;
+	static std::map<std::string, LoadLambda_t> loadLambdaTable;
+
+	if (loadLambdaTable.empty())
+	{
+		loadLambdaTable["sph"]
+			= loadLambdaTable["spa"]
+			= loadLambdaTable["bmp"]
+			= loadLambdaTable["png"]
+			= loadLambdaTable["jpg"]
+			= [](const std::wstring& path, TexMetadata* meta, ScratchImage& img)->HRESULT
+		{
+			return LoadFromWICFile(path.c_str(), WIC_FLAGS_NONE, meta, img);
+		};
+		loadLambdaTable["tga"]
+			= [](const std::wstring& path, TexMetadata* meta, ScratchImage& img)->HRESULT
+		{
+			return LoadFromTGAFile(path.c_str(), meta, img);
+		};
+		loadLambdaTable["dds"]
+			= [](const std::wstring& path, TexMetadata* meta, ScratchImage& img)->HRESULT
+		{
+			return LoadFromDDSFile(path.c_str(), DDS_FLAGS_NONE, meta, img);
+		};
+	}
+
+	// テクスチャのロード
 	TexMetadata metadata = {};
 	ScratchImage scratchImg = {};
 
-	HRESULT result = LoadFromWICFile(
-		GetWideStringFromString(texPath).c_str(),
-		WIC_FLAGS_NONE,
+	wstring wtexpath = GetWideStringFromString(texPath); // テクスチャのファイルパス
+	string ext = GetExtension(texPath); // 拡張子を取得
+	if (loadLambdaTable.find(ext) == loadLambdaTable.end()) { return nullptr; } // おかしな拡張子
+	auto result = loadLambdaTable[ext](
+		wtexpath,
 		&metadata,
 		scratchImg);
+	if (FAILED(result)) { return nullptr; }
 
 	if (FAILED(result)) { return nullptr; }
 
@@ -185,6 +227,7 @@ ID3D12Resource* LoadTextureFromFile(std::string& texPath, ID3D12Device* dev)
 	);
 	if (FAILED(result)) { return nullptr; }
 
+	_resourceTable[texPath] = texbuff;
 	return texbuff;
 }
 
@@ -234,6 +277,61 @@ ID3D12Resource* CreateMonoTexture(ID3D12Device* dev, unsigned int val)
 		static_cast<UINT>(data.size()));
 
 	return whiteBuff;
+}
+
+// デフォルトグラデーションテクスチャ
+ID3D12Resource* CreateGrayGradationTexture(ID3D12Device* dev)
+{
+	D3D12_HEAP_PROPERTIES texHeapProp = {};
+
+	texHeapProp.Type = D3D12_HEAP_TYPE_CUSTOM;
+	texHeapProp.CPUPageProperty =
+		D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
+	texHeapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
+	texHeapProp.CreationNodeMask = 0;
+	texHeapProp.VisibleNodeMask = 0;
+
+	D3D12_RESOURCE_DESC resDesc = {};
+	resDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	resDesc.Width = 4; // 幅
+	resDesc.Height = 256; // 高さ
+	resDesc.DepthOrArraySize = 1;
+	resDesc.SampleDesc.Count = 1;
+	resDesc.SampleDesc.Quality = 0;
+	resDesc.MipLevels = 1;
+	resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	resDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	resDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+	ID3D12Resource* gradBuff = nullptr;
+	HRESULT result = dev->CreateCommittedResource(
+		&texHeapProp,
+		D3D12_HEAP_FLAG_NONE, // 特に指定なし
+		&resDesc,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		nullptr,
+		IID_PPV_ARGS(&gradBuff)
+	);
+	if (FAILED(result)) { return nullptr; }
+
+	// 上が白くて下が黒いテクスチャデータを作成
+	std::vector<unsigned int>data(4 * 256);
+	auto it = data.begin();
+	unsigned int c = 0xff;
+	for (; it != data.end(); it += 4)
+	{	// RGBAが逆並びのためRGBマクロと0xff<<24を用いて表す
+		unsigned int col = (0xff << 24) | RGB(c, c, c);
+		std::fill(it, it + 4, col);
+		--c;
+	}
+	result = gradBuff->WriteToSubresource(
+		0,
+		nullptr,
+		data.data(),
+		4 * static_cast<UINT>(sizeof(unsigned int)),
+		static_cast<UINT>(sizeof(unsigned int) * data.size()));
+
+	return gradBuff;
 }
 
 ID3D12Resource* CreateWhiteTexture(ID3D12Device* dev)
@@ -493,6 +591,7 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	// ウィンドウ表示
 	ShowWindow(hwnd, SW_SHOW);
 
+	ID3D12Resource* gradTex = CreateGrayGradationTexture(_dev);
 	ID3D12Resource* whiteTex = CreateWhiteTexture(_dev);
 	ID3D12Resource* blackTex = CreateBlackTexture(_dev);
 
@@ -506,9 +605,9 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 
 	char signature[3] = {}; // シグネチャ
 	PMDHeader pmdheader = {};
-	//	std::string strModelPath = "Model/初音ミク.pmd";
-	//	std::string strModelPath = "Model/巡音ルカ.pmd";
-	std::string strModelPath = "Model/初音ミクmetal.pmd";
+	std::string strModelPath = "Model/初音ミク.pmd";
+	//std::string strModelPath = "Model/巡音ルカ.pmd";
+	//std::string strModelPath = "Model/初音ミクmetal.pmd";
 	FILE* fp;
 	fopen_s(&fp, strModelPath.c_str(), "rb");
 
@@ -659,13 +758,22 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 		materials[i].material.specular = pmdMaterials[i].specular;
 		materials[i].material.specularity = pmdMaterials[i].specularity;
 		materials[i].material.ambient = pmdMaterials[i].ambient;
+		materials[i].additional.toonIdx = pmdMaterials[i].toonIdx;
 	}
 
 	vector<ID3D12Resource*> textureResources(materialNum);
 	vector<ID3D12Resource*>sphResources(materialNum, nullptr);
 	vector<ID3D12Resource*> spaResources(materialNum, nullptr);
+	vector<ID3D12Resource*>toonResources(materialNum, nullptr);
 	for (int i = 0; i < pmdMaterials.size(); i++)
-	{ 
+	{
+		// てゅーんリソースの読み込み
+		string toonFilePath = "toon/";
+		char toonFileName[16];
+		sprintf_s(toonFileName, "toon%02d.bmp", pmdMaterials[i].toonIdx + 1);
+		toonFilePath += toonFileName;
+		toonResources[i] = LoadTextureFromFile(toonFilePath, _dev);
+
 		if (strlen(pmdMaterials[i].texFilePath) == 0)
 		{
 			textureResources[i] = nullptr;
@@ -765,7 +873,7 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	materialDescHeapDesc.Flags =
 		D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	materialDescHeapDesc.NodeMask = 0;
-	materialDescHeapDesc.NumDescriptors = materialNum * 4; // マテリアル数(定数1つ、テクスチャ3つ）
+	materialDescHeapDesc.NumDescriptors = materialNum * 5;  // マテリアル数分（定数1つ、テクスチャ4つ）
 	materialDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 
 	result = _dev->CreateDescriptorHeap(
@@ -843,6 +951,18 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 			srvDesc.Format = spaResources[i]->GetDesc().Format;
 			_dev->CreateShaderResourceView(
 				spaResources[i], &srvDesc, matDescHeapH);
+		}
+		matDescHeapH.ptr += incSize;
+
+		if (toonResources[i] == nullptr)
+		{
+			srvDesc.Format = gradTex->GetDesc().Format;
+			_dev->CreateShaderResourceView(gradTex, &srvDesc, matDescHeapH);
+		}
+		else
+		{
+			srvDesc.Format = toonResources[i]->GetDesc().Format;
+			_dev->CreateShaderResourceView(toonResources[i], &srvDesc, matDescHeapH);
 		}
 		matDescHeapH.ptr += incSize;
 	}
@@ -993,7 +1113,7 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 	// テクスチャ1 つ目（マテリアルとペア）
-	descTblRange[2].NumDescriptors = 3; // テクスチャ3 つ（基本とsph とspa）
+	descTblRange[2].NumDescriptors = 4; // テクスチャ3 つ（基本とsph とspa）
 	descTblRange[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV; // 種別はテクスチャ
 	descTblRange[2].BaseShaderRegister = 0; // 0 番スロットから
 	descTblRange[2].OffsetInDescriptorsFromTableStart =
@@ -1019,21 +1139,28 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 	rootSignatureDesc.pParameters = rootparam; // ルートパラメーターの先頭アドレス
 	rootSignatureDesc.NumParameters = 2; // ルートパラメーター数
 
-	D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
-	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP; // 横方向の繰り返し
-	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP; // 縦方向の繰り返し
-	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP; // 奥行きの繰り返し
-	samplerDesc.BorderColor =
+	D3D12_STATIC_SAMPLER_DESC samplerDesc[2] = {};
+	samplerDesc[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP; // 横方向の繰り返し
+	samplerDesc[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP; // 縦方向の繰り返し
+	samplerDesc[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP; // 奥行きの繰り返し
+	samplerDesc[0].BorderColor =
 		D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK; // ボーダーは黒
-	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR; // 線形補間
-	samplerDesc.MaxLOD = D3D12_FLOAT32_MAX; // ミップマップ最大値
-	samplerDesc.MinLOD = 0.0f; // ミップマップ最小値
-	samplerDesc.ShaderVisibility =
+	samplerDesc[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR; // 線形補間
+	samplerDesc[0].MaxLOD = D3D12_FLOAT32_MAX; // ミップマップ最大値
+	samplerDesc[0].MinLOD = 0.0f; // ミップマップ最小値
+	samplerDesc[0].ShaderVisibility =
 		D3D12_SHADER_VISIBILITY_PIXEL; // ピクセルシェーダーから見える
-	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER; // リサンプリングしない
+	samplerDesc[0].ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER; // リサンプリングしない
 
-	rootSignatureDesc.pStaticSamplers = &samplerDesc;
-	rootSignatureDesc.NumStaticSamplers = 1;
+	samplerDesc[1] = samplerDesc[0];
+	samplerDesc[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP; // 横方向の繰り返し
+	samplerDesc[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP; // 縦方向の繰り返し
+	samplerDesc[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP; // 奥行きの繰り返し
+	samplerDesc[1].Filter = D3D12_FILTER_MIN_MAG_MIP_POINT; // 保管しない（ニアレストネイバー）
+	samplerDesc[1].ShaderRegister = 1; // シェーダースロット番号を忘れないように
+
+	rootSignatureDesc.pStaticSamplers = &samplerDesc[0];
+	rootSignatureDesc.NumStaticSamplers = 2;
 
 	ID3DBlob* rootSigBlob = nullptr;
 	result = D3D12SerializeRootSignature(
@@ -1376,7 +1503,7 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 		unsigned int idxOffset = 0; // 最初はオフセットなし
 
 		UINT cbvsrvIncSize = _dev->GetDescriptorHandleIncrementSize(
-			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 4;
+			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 5;
 
 		for (auto& m : materials)
 		{
