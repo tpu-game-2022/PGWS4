@@ -517,11 +517,35 @@ PMDActor::~PMDActor()
 {
 }
 
+void PMDActor::RecursiveMatrixMultipy(BoneNode& node, const DirectX::XMMATRIX& mat) 
+{
+	_boneMatrices[node.boneIdx] = mat;
+
+	for (BoneNode* cnode : node.children) {
+		RecursiveMatrixMultipy(*cnode, _boneMatrices[cnode->boneIdx] * mat);
+	}
+}
+
+
 void PMDActor::Update() 
 {
-	_angle += 0.03f;
-	_mappedMatrices[0] = XMMatrixRotationY(_angle);
+	//行列情報クリア(してないと前フレームのポーズが重ね掛けされてモデルが壊れる)
+	std::fill(_boneMatrices.begin(), _boneMatrices.end(), XMMatrixIdentity());
+
+	// 左腕を90°曲げる
+	BoneNode& node = _boneNodeTable["左腕"];
+	DirectX::XMFLOAT3& pos = node.startPos;
+	_boneMatrices[node.boneIdx] = 
+		XMMatrixTranslation(-pos.x, -pos.y, -pos.z)
+		* XMMatrixRotationZ(XM_PIDIV2)
+		* XMMatrixTranslation(pos.x, pos.y, pos.z);
+
+	RecursiveMatrixMultipy(node, XMMatrixIdentity());
+
+	// コピー
+	copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
 }
+
 void PMDActor::Draw() 
 {
 	ID3D12GraphicsCommandList* cmdList = _dx12.CommandList().Get();

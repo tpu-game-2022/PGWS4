@@ -76,6 +76,8 @@ private:
 		std::vector<BoneNode*> children;//子ノード
 	};
 	std::map<std::string, BoneNode> _boneNodeTable;// 名前で骨を検索できるように
+	
+	void RecursiveMatrixMultipy(BoneNode& node, const DirectX::XMMATRIX& mat);
 
 
 	float _angle;//テスト用Y軸回転
