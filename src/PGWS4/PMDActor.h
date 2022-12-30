@@ -79,6 +79,17 @@ private:
 	
 	void RecursiveMatrixMultipy(BoneNode& node, const DirectX::XMMATRIX& mat);
 
+	///キーフレーム構造体
+	struct KeyFrame {
+		unsigned int frameNo;//フレーム№(アニメーション開始からの経過時間)
+		DirectX::XMVECTOR quaternion;//クォータニオン
+		KeyFrame(
+			unsigned int fno,
+			const DirectX::XMVECTOR& q) :
+			frameNo(fno),
+			quaternion(q){}
+	};
+	std::map<std::string, std::vector<KeyFrame>> _motiondata;
 
 	float _angle;//テスト用Y軸回転
 
@@ -95,6 +106,8 @@ public:
 
 	///クローンは頂点およびマテリアルは共通のバッファを見るようにする
 	PMDActor* Clone();
+
+	void LoadVMDFile(const char* filepath, const char* name);
 
 	void Update();
 	void Draw();
