@@ -533,16 +533,26 @@ void PMDActor::Update()
 	std::fill(_boneMatrices.begin(), _boneMatrices.end(), XMMatrixIdentity());
 
 	// 左腕を90°曲げる
-	BoneNode& node = _boneNodeTable["左腕"];
-	DirectX::XMFLOAT3& pos = node.startPos;
-	_boneMatrices[node.boneIdx] = 
-		XMMatrixTranslation(-pos.x, -pos.y, -pos.z)
+	BoneNode& armNode = _boneNodeTable["左腕"];
+	DirectX::XMFLOAT3& armPos = armNode.startPos;
+	DirectX::XMMATRIX armMat =
+		XMMatrixTranslation(-armPos.x, -armPos.y, -armPos.z)
 		* XMMatrixRotationZ(XM_PIDIV2)
-		* XMMatrixTranslation(pos.x, pos.y, pos.z);
+		* XMMatrixTranslation(armPos.x, armPos.y, armPos.z);
 
-	RecursiveMatrixMultipy(node, XMMatrixIdentity());
+	// 左ひじを-90°曲げる
+	BoneNode& elbowNode = _boneNodeTable["左ひじ"];
+	DirectX::XMFLOAT3& elbowPos = elbowNode.startPos;
+	DirectX::XMMATRIX elbowMat =
+		XMMatrixTranslation(-elbowPos.x, -elbowPos.y, -elbowPos.z)
+		* XMMatrixRotationZ(-XM_PIDIV2)
+		* XMMatrixTranslation(elbowPos.x, elbowPos.y, elbowPos.z);
 
-	// コピー
+	_boneMatrices[armNode.boneIdx] = armMat;
+	_boneMatrices[elbowNode.boneIdx] = elbowMat;
+
+	// 根から再帰処理して親の影響を伝搬させたのちにコピー
+	RecursiveMatrixMultipy(_boneNodeTable["センター"], XMMatrixIdentity());
 	copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
 }
 
