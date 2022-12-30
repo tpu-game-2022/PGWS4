@@ -62,7 +62,7 @@ private:
 		DirectX::XMMATRIX world;
 	};
 	Transform _transform;
-	Transform* _mappedTransform = nullptr;
+	DirectX::XMMATRIX* _mappedMatrices = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12Resource> _transformBuff = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12Resource> _transformMat = nullptr;//座標変換行列(今はワールドのみ)
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _transformHeap = nullptr;//座標変換ヒープ

@@ -458,7 +458,8 @@ void PMDActor::CreateMaterialAndTextureView()
 void PMDActor::CreateTransformView()
 {
 	//GPUバッファ作成
-	unsigned int buffSize = (sizeof(Transform) + 0xff) & ~0xff;
+	unsigned int buffSize = static_cast <UINT>(sizeof(XMMATRIX) * (1 + _boneMatrices.size()));
+	buffSize = (buffSize + 0xff) & ~0xff;
 	CD3DX12_HEAP_PROPERTIES heapProp(D3D12_HEAP_TYPE_UPLOAD);
 	CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(buffSize);
 
@@ -471,9 +472,11 @@ void PMDActor::CreateTransformView()
 		IID_PPV_ARGS(_transformBuff.ReleaseAndGetAddressOf())
 	));
 
-	// 値のコピー
-	ThrowIfFailed(_transformBuff->Map(0, nullptr, (void**)&_mappedTransform));
-	*_mappedTransform = _transform;
+	//マップとコピー
+	ThrowIfFailed(_transformBuff->Map(0, nullptr, (void**)&_mappedMatrices));
+
+	_mappedMatrices[0] = _transform.world;
+	std::copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
 
 	// ディスクリプタヒープ
 	D3D12_DESCRIPTOR_HEAP_DESC transformDescHeapDesc = {};
@@ -517,7 +520,7 @@ PMDActor::~PMDActor()
 void PMDActor::Update() 
 {
 	_angle += 0.03f;
-	_mappedTransform->world = XMMatrixRotationY(_angle);
+	_mappedMatrices[0] = XMMatrixRotationY(_angle);
 }
 void PMDActor::Draw() 
 {
