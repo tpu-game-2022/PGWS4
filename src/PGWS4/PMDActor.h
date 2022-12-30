@@ -81,15 +81,19 @@ private:
 
 	///キーフレーム構造体
 	struct KeyFrame {
-		unsigned int frameNo;//フレーム№(アニメーション開始からの経過時間)
-		DirectX::XMVECTOR quaternion;//クォータニオン
+		unsigned int frameNo=0;//フレーム№(アニメーション開始からの経過時間)
+		DirectX::XMVECTOR quaternion = DirectX::XMQuaternionIdentity(); //クォータニオン
+		KeyFrame() {}
 		KeyFrame(
 			unsigned int fno,
 			const DirectX::XMVECTOR& q) :
 			frameNo(fno),
 			quaternion(q){}
 	};
-	std::map<std::string, std::vector<KeyFrame>> _motiondata;
+	std::map<std::string, std::map<unsigned int, KeyFrame>> _motiondata;
+
+	DWORD _startTime;//アニメーション開始時点のミリ秒時刻
+	void MotionUpdate();
 
 	float _angle;//テスト用Y軸回転
 
@@ -111,5 +115,7 @@ public:
 
 	void Update();
 	void Draw();
+
+	void PlayAnimation();
 };
 

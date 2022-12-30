@@ -3,6 +3,8 @@
 #include "Dx12Wrapper.h"
 #include <d3dx12.h>
 
+#pragma comment(lib,"winmm.lib")
+
 using namespace DirectX;
 using namespace Microsoft::WRL;
 
@@ -551,9 +553,7 @@ void PMDActor::LoadVMDFile(const char* filepath, const char* name)
 	// VMDのキーフレームデータから、実際に使用するキーフレームテーブルへ変換
 	for (VMDKeyFrame& f : keyframes)
 	{
-		_motiondata[f.boneName].emplace_back(
-			KeyFrame(f.frameNo,
-				XMLoadFloat4(&f.quaternion)));
+		_motiondata[f.boneName][f.frameNo] = KeyFrame(f.frameNo, XMLoadFloat4(&f.quaternion));
 	}
 
 	for (auto& bonemotion : _motiondata)
@@ -571,6 +571,41 @@ void PMDActor::LoadVMDFile(const char* filepath, const char* name)
 	copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
 }
 
+void PMDActor::PlayAnimation() 
+{
+	_startTime = timeGetTime();
+}
+
+void PMDActor::MotionUpdate() 
+{
+	DWORD elapsedTime = timeGetTime() - _startTime;//経過時間を測る
+	unsigned int frameNo = (30 * elapsedTime / 1000);
+
+	//行列情報クリア(してないと前フレームのポーズが重ね掛けされてモデルが壊れる)
+	std::fill(_boneMatrices.begin(), _boneMatrices.end(), XMMatrixIdentity());
+
+	//モーションデータ更新
+	for (auto& bonemotion : _motiondata) {
+		BoneNode& node = _boneNodeTable[bonemotion.first];
+		//合致するものを探す
+		auto& keyframes = bonemotion.second;
+
+		auto it = keyframes.upper_bound(frameNo);
+		if(it-- == keyframes.begin())continue;//合致するものがなければ飛ばす
+
+		DirectX::XMFLOAT3& pos = node.startPos;
+		DirectX::XMMATRIX mat = 
+			XMMatrixTranslation(-pos.x, -pos.y, -pos.z) *	//原点に戻し
+			XMMatrixRotationQuaternion(it->second.quaternion) *	//回転
+			XMMatrixTranslation(pos.x, pos.y, pos.z);		//元の座標に戻す
+		_boneMatrices[node.boneIdx] = mat;
+	}
+
+	// 親の影響の反映
+	RecursiveMatrixMultipy(_boneNodeTable["センター"], XMMatrixIdentity());
+	copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
+}
+
 void PMDActor::RecursiveMatrixMultipy(BoneNode& node, const DirectX::XMMATRIX& mat) 
 {
 	_boneMatrices[node.boneIdx] = mat;
@@ -583,6 +618,10 @@ void PMDActor::RecursiveMatrixMultipy(BoneNode& node, const DirectX::XMMATRIX& m
 
 void PMDActor::Update() 
 {
+	_angle += 0.03f;
+	_mappedMatrices[0] = XMMatrixRotationY(_angle);
+
+	MotionUpdate();
 }
 
 void PMDActor::Draw() 
