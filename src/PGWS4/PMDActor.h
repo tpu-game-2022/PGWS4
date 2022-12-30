@@ -67,6 +67,17 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> _transformMat = nullptr;//座標変換行列(今はワールドのみ)
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _transformHeap = nullptr;//座標変換ヒープ
 
+	//ボーン関連
+	std::vector<DirectX::XMMATRIX> _boneMatrices;// GPUへコピーするためのボーン情報
+
+	struct BoneNode {
+		int boneIdx;					//ボーンインデックス
+		DirectX::XMFLOAT3 startPos;		//ボーン基準点(回転中心)
+		std::vector<BoneNode*> children;//子ノード
+	};
+	std::map<std::string, BoneNode> _boneNodeTable;// 名前で骨を検索できるように
+
+
 	float _angle;//テスト用Y軸回転
 
 public:
