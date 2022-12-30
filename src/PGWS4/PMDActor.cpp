@@ -2,6 +2,7 @@
 #include "PMDRenderer.h"
 #include "Dx12Wrapper.h"
 #include <d3dx12.h>
+#include <algorithm>
 
 #pragma comment(lib,"winmm.lib")
 
@@ -553,7 +554,17 @@ void PMDActor::LoadVMDFile(const char* filepath, const char* name)
 	// VMDのキーフレームデータから、実際に使用するキーフレームテーブルへ変換
 	for (VMDKeyFrame& f : keyframes)
 	{
-		_motiondata[f.boneName][f.frameNo] = KeyFrame(f.frameNo, XMLoadFloat4(&f.quaternion));
+		_motiondata[f.boneName].emplace_back(
+			KeyFrame(f.frameNo,
+				XMLoadFloat4(&f.quaternion)));
+	}
+
+	for (auto& motion : _motiondata) 
+	{
+		sort(motion.second.begin(), motion.second.end(),
+			[](const KeyFrame& lval, const KeyFrame& rval) {
+				return lval.frameNo <= rval.frameNo;
+			});
 	}
 
 	for (auto& bonemotion : _motiondata)
@@ -586,17 +597,35 @@ void PMDActor::MotionUpdate()
 
 	//モーションデータ更新
 	for (auto& bonemotion : _motiondata) {
-		BoneNode& node = _boneNodeTable[bonemotion.first];
+		auto itBoneNode = _boneNodeTable.find(bonemotion.first);
+		if (itBoneNode == _boneNodeTable.end()) continue;
+		BoneNode& node = itBoneNode->second;
 		//合致するものを探す
 		auto& keyframes = bonemotion.second;
 
-		auto it = keyframes.upper_bound(frameNo);
-		if(it-- == keyframes.begin())continue;//合致するものがなければ飛ばす
+		auto rit = find_if(keyframes.rbegin(), keyframes.rend(), 
+			[frameNo](const KeyFrame& keyframe) {
+				return keyframe.frameNo <= frameNo;
+			});
+		if (rit == keyframes.rend())continue;//合致するものがなければ飛ばす
+
+		DirectX::XMMATRIX rotation;
+		auto it = rit.base();
+		if (it != keyframes.end()) {
+			auto t = static_cast<float>(frameNo - rit->frameNo) /
+				static_cast<float>(it->frameNo - rit->frameNo);
+
+			rotation = XMMatrixRotationQuaternion(
+				XMQuaternionSlerp(rit->quaternion, it->quaternion, t));
+		}
+		else {
+			rotation = XMMatrixRotationQuaternion(rit->quaternion);
+		}
 
 		DirectX::XMFLOAT3& pos = node.startPos;
 		DirectX::XMMATRIX mat = 
 			XMMatrixTranslation(-pos.x, -pos.y, -pos.z) *	//原点に戻し
-			XMMatrixRotationQuaternion(it->second.quaternion) *	//回転
+			rotation *	//回転
 			XMMatrixTranslation(pos.x, pos.y, pos.z);		//元の座標に戻す
 		_boneMatrices[node.boneIdx] = mat;
 	}
@@ -618,7 +647,7 @@ void PMDActor::RecursiveMatrixMultipy(BoneNode& node, const DirectX::XMMATRIX& m
 
 void PMDActor::Update() 
 {
-	_angle += 0.03f;
+//	_angle += 0.03f;
 	_mappedMatrices[0] = XMMatrixRotationY(_angle);
 
 	MotionUpdate();
