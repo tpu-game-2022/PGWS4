@@ -552,11 +552,14 @@ void PMDActor::LoadVMDFile(const char* filepath, const char* name)
 	fclose(fp);
 
 	// VMDのキーフレームデータから、実際に使用するキーフレームテーブルへ変換
+	_duration = 0;
 	for (VMDKeyFrame& f : keyframes)
 	{
 		_motiondata[f.boneName].emplace_back(
 			KeyFrame(f.frameNo,
 				XMLoadFloat4(&f.quaternion)));
+
+		_duration = std::max<unsigned int>(_duration, f.frameNo);
 	}
 
 	for (auto& motion : _motiondata) 
@@ -591,6 +594,13 @@ void PMDActor::MotionUpdate()
 {
 	DWORD elapsedTime = timeGetTime() - _startTime;//経過時間を測る
 	unsigned int frameNo = (30 * elapsedTime / 1000);
+
+	// ここからループのための追加コード
+	if (frameNo > _duration)
+	{
+		_startTime = timeGetTime();
+		frameNo = 0;
+	}
 
 	//行列情報クリア(してないと前フレームのポーズが重ね掛けされてモデルが壊れる)
 	std::fill(_boneMatrices.begin(), _boneMatrices.end(), XMMatrixIdentity());

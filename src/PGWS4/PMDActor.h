@@ -92,6 +92,7 @@ private:
 	std::map<std::string, std::vector<KeyFrame>> _motiondata;
 
 	DWORD _startTime;//アニメーション開始時点のミリ秒時刻
+	unsigned int _duration = 0;
 	void MotionUpdate();
 
 	float _angle;//テスト用Y軸回転
