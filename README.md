@@ -54,3 +54,7 @@ https://user-images.githubusercontent.com/71632844/202159977-cbac4cee-3ea6-4810-
 
 ![DX12テスト 2022_12_07 18_49_47](https://user-images.githubusercontent.com/71632844/206148697-c88b8ccc-a770-4ac5-b62f-7186a3dcf770.png)
 
+# 第12回課題 結果画像
+第８章のチャレンジ課題まで実装しました。
+
+![DX12テスト 2022_12_14 17_25_12](https://user-images.githubusercontent.com/71632844/208670181-52e8a969-73a5-438b-86b8-cb0b928d5306.png)
