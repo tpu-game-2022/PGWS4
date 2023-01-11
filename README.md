@@ -47,5 +47,8 @@
 〇Unity〇
 ![2022-12-14 (4)](https://user-images.githubusercontent.com/71643403/207551252-ca7e4c07-9190-4d44-b14a-e76c2cbf6b7b.png)
 
+# 1月11日(水)までの授業の進捗
+![2023-01-11 (3)](https://user-images.githubusercontent.com/71643403/211762420-b8d385bb-5331-4cff-887b-6e0e31bbf5ae.png)
+
 # 締め切り
 次の授業の2日前（水曜日の授業であれば月曜日一杯）
