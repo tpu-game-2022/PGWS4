@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include<d3d12.h>
 #include<DirectXMath.h>
 #include<vector>
@@ -62,12 +62,22 @@ private:
 		DirectX::XMMATRIX world;
 	};
 	Transform _transform;
-	Transform* _mappedTransform = nullptr;
+	DirectX::XMMATRIX* _mappedMatrices = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12Resource> _transformBuff = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12Resource> _transformMat = nullptr;//座標変換行列(今はワールドのみ)
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _transformHeap = nullptr;//座標変換ヒープ
 
 	float _angle;//テスト用Y軸回転
+
+	std::vector<DirectX::XMMATRIX> _boneMatrices;//GPUへコピーするためのボーン情報
+
+	struct BoneNode{
+		int boneIdx;						//ボーンインデックス
+		DirectX::XMFLOAT3 startPos;			//ボーン基準点
+		std::vector<BoneNode*> children;	//子ノード
+	};
+	std::map<std::string, BoneNode> _boneNodeTable; //名前で骨を検索できるように
+	void RecursiveMatrixMutiply(BoneNode& node, const DirectX::XMMATRIX& mat);
 
 public:
 	// 初期化の部分処理
