@@ -1,4 +1,4 @@
-﻿#include "PMDRenderer.h"
+#include "PMDRenderer.h"
 #include <d3dcompiler.h>
 #include "Dx12Wrapper.h"
 
