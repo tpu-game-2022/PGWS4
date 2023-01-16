@@ -62,17 +62,47 @@ private:
 		DirectX::XMMATRIX world;
 	};
 	Transform _transform;
-	Transform* _mappedTransform = nullptr;
+	DirectX::XMMATRIX* _mappedMatrices = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12Resource> _transformBuff = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12Resource> _transformMat = nullptr;//座標変換行列(今はワールドのみ)
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _transformHeap = nullptr;//座標変換ヒープ
 
+	// ボーン関係
+	std::vector<DirectX::XMMATRIX> _boneMatrices;   // GPUへコピーするためのボーン情報
+	struct BoneNode
+	{
+		int boneIdx;   //ボーンインデックス
+		DirectX::XMFLOAT3 startPos;  //ボーン基準点(回転中心)
+		std::vector<BoneNode*> children;   // 子ノード
+	};
+	std::map<std::string, BoneNode> _boneNodeTable;   // 名前で骨を検索できるように
+	
+	void RecursiveMatrixMultipy(BoneNode& node, const DirectX::XMMATRIX& mat);
+	
+	/// キーフレーム構造体
+	struct KeyFrame 
+	{
+		unsigned int frameNo;   // フレームNo.(アニメーション開始からの経過時間)
+		DirectX::XMVECTOR quaternion;   // クォータニオン
+		KeyFrame(
+			unsigned int fno,
+			const DirectX::XMVECTOR& q) : 
+			frameNo(fno),
+			quaternion(q){}
+	};
+	std::map<std::string, std::vector<KeyFrame>> _motiondata;
+
 	float _angle;//テスト用Y軸回転
 
 private:
+	// 自転させる
+	void RotationActor(float rotation);
+
 	// [6] チャレンジ問題
     // ポリゴンを振り回してみよう
-	void RevolutionObj(float* angle, DirectX::XMMATRIX* worldMat);
+	void RevolutionActor(float* angle, DirectX::XMMATRIX* worldMat);
+
+	void UpLeftElbow();
 
 public:
 	// 初期化の部分処理
@@ -87,6 +117,8 @@ public:
 
 	///クローンは頂点およびマテリアルは共通のバッファを見るようにする
 	PMDActor* Clone();
+
+	void LoadVMDFile(const char* filepath, const char* name);
 
 	void Update();
 	void Draw();
