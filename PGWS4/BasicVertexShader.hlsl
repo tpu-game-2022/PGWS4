@@ -8,12 +8,16 @@ Output BasicVS(
 	min16uint weight : WEIGHT)
 {
 	Output output; // ピクセルシェーダーに渡す値
+	//pos = mul(bones[boneno[0]], pos);
+	float w = (float)weight / 100.0f;
+	matrix bm = bones[boneno[0]] * w + bones[boneno[1]] * (1.0f - w);
+	pos = mul(bm, pos);
+	pos = mul(world, pos);
+	output.ray = pos.xyz - eye;
 	output.svpos = mul(proj, mul(view, mul(world, pos)));
 	normal.w = 0;
 	output.normal = mul(world, normal);
 	output.vnormal = mul(view, output.normal);
 	output.uv = uv;
-	pos = mul(world, pos);
-	output.ray = pos.xyz - eye;
 	return output;
 }
