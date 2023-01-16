@@ -22,10 +22,9 @@ private:
 	UINT64 _fenceVal = 0;
 
 	unsigned int _screen_size[2];
-
-	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _rtvHeaps = nullptr;
-	std::vector<ID3D12Resource*> _backBuffers ;
 	Microsoft::WRL::ComPtr<ID3D12Resource> _depthBuffer = nullptr;
+	std::vector<ID3D12Resource*> _backBuffers ;
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _rtvHeaps = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _dsvHeap = nullptr;
 
 	CD3DX12_VIEWPORT _viewport;
@@ -35,14 +34,12 @@ private:
 	using LoadLambda_t = std::function<HRESULT(const std::wstring& path, DirectX::TexMetadata*, DirectX::ScratchImage&)>;
 	std::map<std::string, LoadLambda_t> _loadLambdaTable;
 
-	DirectX::XMMATRIX _worldMat;
 	DirectX::XMMATRIX _viewMat;
 	DirectX::XMMATRIX _projMat;
 
 	//シェーダー側に渡すための基本的な行列データ
 	struct SceneData
 	{
-		DirectX::XMMATRIX word; //モデル本体を回転させたり移動させたりする行列
 		DirectX::XMMATRIX view;//ビュー行列
 		DirectX::XMMATRIX proj;//プロジェクション行列
 		DirectX::XMFLOAT3 eye;//視点座標

@@ -86,8 +86,7 @@ ComPtr<ID3D12Device> Dx12Wrapper::InitializeDevice(IDXGIFactory6* dxgiFactory)
 
 	std::vector<IDXGIAdapter*>adapters;
 	IDXGIAdapter* temAdapter = nullptr;
-	for (int i = 0;
-		dxgiFactory->EnumAdapters(i, &temAdapter) != DXGI_ERROR_NOT_FOUND; ++i) {
+	for (int i = 0;dxgiFactory->EnumAdapters(i, &temAdapter) != DXGI_ERROR_NOT_FOUND; ++i) {
 
 		adapters.push_back(temAdapter);
 
@@ -153,7 +152,7 @@ ComPtr<IDXGISwapChain4> Dx12Wrapper::CreateSwapChain(unsigned int width, unsigne
 	swapchainDesc.Stereo = false;
 	swapchainDesc.SampleDesc.Count = 1;
 	swapchainDesc.SampleDesc.Quality = 0;
-	swapchainDesc.BufferUsage = DXGI_USAGE_BACK_BUFFER;
+	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapchainDesc.BufferCount = 2;
 	swapchainDesc.Scaling = DXGI_SCALING_STRETCH;
 	swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;

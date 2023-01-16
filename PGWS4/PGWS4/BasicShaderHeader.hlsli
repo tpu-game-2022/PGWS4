@@ -26,6 +26,7 @@ cbuffer SceneData : register(b0)
 cbuffer Transform : register(b1)
 {
 	matrix world; // ワールド行列
+	matrix bones[256];//ボーン
 };
 
 // 定数バッファー2

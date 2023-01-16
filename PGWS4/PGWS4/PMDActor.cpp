@@ -159,6 +159,11 @@ HRESULT PMDActor::LoadPMDFile(const char* path) {
 
 	fread(&_materialNum, sizeof(_materialNum), 1, fp);
 
+	_textureResources.resize(_materialNum);
+	_sphResources.resize(_materialNum);
+	_spaResources.resize(_materialNum);
+	_toonResources.resize(_materialNum);
+
 	std::vector<PMDMaterial> pmdMaterials(_materialNum);
 
 	fread(
@@ -256,7 +261,57 @@ HRESULT PMDActor::LoadPMDFile(const char* path) {
 		}
 	}
 
+	//骨の数の読み込み
+	unsigned short boneNum = 0;
+	fread(&boneNum, sizeof(boneNum), 1, fp);
+
+#pragma pack(1)
+	//読み込み用ボーン構造体
+	struct PMDBone {
+		char boneName[20];			//ボーン名
+		unsigned short parentNo;	//親ボーン番号
+		unsigned short nextNo;		//先端のボーン番号
+		unsigned char type;			//ボーン種別
+		unsigned short ikboneNo;	//IKボーン番号
+		XMFLOAT3 pos;				//ボーンの基準点座標
+	};
+#pragma pack()
+
+	std::vector<PMDBone> pmdBones(boneNum);
+	fread(pmdBones.data(), sizeof(PMDBone), boneNum, fp);
+
+
 	fclose(fp);
+
+	// インデックスと名前の対応関係構築のために後で使う
+	std::vector<std::string> boneNames(pmdBones.size());
+
+	// ボーンノードマップを作る
+	for (int idx = 0; idx < pmdBones.size(); ++idx)
+	{
+		PMDBone& pb = pmdBones[idx];
+		boneNames[idx] = pb.boneName;
+		BoneNode& node = _boneNodeTable[pb.boneName];
+		node.boneIdx = idx;
+		node.startPos = pb.pos;
+	}
+
+	// 親子関係を構築する
+	for (PMDBone& pb : pmdBones)
+	{
+		// 親インデックスをチェック(あり得ない番号なら飛ばす)
+		if (pmdBones.size() <= pb.parentNo)
+		{
+			continue;
+		}
+		std::string& parentName = boneNames[pb.parentNo];
+		_boneNodeTable[parentName].children.
+			emplace_back(&_boneNodeTable[pb.boneName]);
+	}
+
+	// ボーンをすべて初期化する。
+	_boneMatrices.resize(pmdBones.size());
+	std::fill(_boneMatrices.begin(), _boneMatrices.end(), XMMatrixIdentity());
 
 	return S_OK;
 }
@@ -383,7 +438,8 @@ void PMDActor::CreateMaterialAndTextureView() {
 
 void PMDActor::CreateTransformView()
 {
-	unsigned int buffSize = (sizeof(Transform) + 0xff) & ~0xff;
+	unsigned int buffSize = static_cast<UINT>(sizeof(XMMATRIX) * (1 + _boneMatrices.size()));
+	buffSize = (buffSize + 0xff) & ~0xff;
 	CD3DX12_HEAP_PROPERTIES heapProp(D3D12_HEAP_TYPE_UPLOAD);
 	CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(buffSize);
 
@@ -396,8 +452,11 @@ void PMDActor::CreateTransformView()
 		IID_PPV_ARGS(_transformBuff.ReleaseAndGetAddressOf())
 	));
 
-	ThrowIfFailed(_transformBuff->Map(0, nullptr, (void**)&_mappedTransform));
-	*_mappedTransform = _transform;
+	ThrowIfFailed(_transformBuff->Map(0, nullptr, (void**)&_mappedMatrices));
+
+	_mappedMatrices[0] = _transform.world;
+
+	std::copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
 
 	D3D12_DESCRIPTOR_HEAP_DESC transformDescHeapDesc = {};
 	transformDescHeapDesc.NumDescriptors = 1;
@@ -435,23 +494,121 @@ PMDActor::~PMDActor()
 {
 }
 
+void PMDActor::LoadVMDFile(const char* filepath, const char* name)
+{
+	FILE* fp;
+	fopen_s(&fp, filepath, "rb");
+	fseek(fp, 50, SEEK_SET); 
+
+	unsigned int keyframeNum = 0;
+	fread(&keyframeNum, sizeof(keyframeNum), 1, fp);
+
+	struct VMDKeyFrame
+	{
+		char boneName[15];		  // ボーン名
+		unsigned int frameNo;	  // フレーム番号
+		XMFLOAT3 location;		  // 位置
+		XMFLOAT4 quaternion;	  // 回転
+		unsigned char bezier[64]; // ベジェ補完パラメータ
+	};
+
+	std::vector<VMDKeyFrame> keyframes(keyframeNum);
+	for (VMDKeyFrame& keyframe : keyframes)
+	{
+		fread(keyframe.boneName, sizeof(keyframe.boneName), 1, fp); // ボーン名
+		fread(&keyframe.frameNo, sizeof(keyframe.frameNo) +			// フレーム番号
+			sizeof(keyframe.location) +								// 位置
+			sizeof(keyframe.quaternion) +							// クオータニオン
+			sizeof(keyframe.bezier),								// 補間ベジェデータ
+			1, fp);
+	}
+
+	fclose(fp);
+
+	// VMDのキーフレームデータから、実際に使用するキーフレームテーブルへ変換
+	for (VMDKeyFrame& f : keyframes)
+	{
+		_motiondata[f.boneName].emplace_back(
+			KeyFrame(f.frameNo,
+				XMLoadFloat4(&f.quaternion)));
+	}
+
+	for (auto& bonemotion : _motiondata)
+	{
+		BoneNode& node = _boneNodeTable[bonemotion.first];
+		DirectX::XMFLOAT3& pos = node.startPos;
+		DirectX::XMMATRIX mat =
+			XMMatrixTranslation(-pos.x, -pos.y, -pos.z) *
+			XMMatrixRotationQuaternion(bonemotion.second[0].quaternion) *
+			XMMatrixTranslation(pos.x, pos.y, pos.z);
+		_boneMatrices[node.boneIdx] = mat;
+	}
+
+	RecursiveMatrixMultipy(_boneNodeTable["センター"], XMMatrixIdentity());
+	copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
+}
+
+
+void PMDActor::RecursiveMatrixMultipy(BoneNode& node, const DirectX::XMMATRIX& mat)
+{
+	_boneMatrices[node.boneIdx] = mat;
+
+	for (BoneNode* cnode : node.children) {
+		RecursiveMatrixMultipy(*cnode, _boneMatrices[cnode->boneIdx] * mat);
+	}
+}
+
+
 void PMDActor::Update()
 {
-	_angle += 0.5f;
-	_mappedTransform->world = XMMatrixRotationY(_angle);
+	/*_angle += 0.03f;
+	_mappedMatrices[0] = XMMatrixRotationY(_angle);*/
+
+	////行列情報クリア(してないと前フレームのポーズが重ね掛けされてモデルが壊れる)
+	//std::fill(_boneMatrices.begin(), _boneMatrices.end(), XMMatrixIdentity());
+
+	//// 左腕を90°曲げる
+	//BoneNode& armNode = _boneNodeTable["左腕"];
+	//DirectX::XMFLOAT3& armPos = armNode.startPos;
+	//DirectX::XMMATRIX armMat =
+	//	XMMatrixTranslation(-armPos.x, -armPos.y, -armPos.z)
+	//	* XMMatrixRotationZ(XM_PIDIV2)
+	//	* XMMatrixTranslation(armPos.x, armPos.y, armPos.z);
+
+	//// 左ひじを-90°曲げる
+	//BoneNode& elbowNode = _boneNodeTable["左ひじ"];
+	//DirectX::XMFLOAT3& elbowPos = elbowNode.startPos;
+	//DirectX::XMMATRIX elbowMat =
+	//	XMMatrixTranslation(-elbowPos.x, -elbowPos.y, -elbowPos.z)
+	//	* XMMatrixRotationZ(-XM_PIDIV2)
+	//	* XMMatrixTranslation(elbowPos.x, elbowPos.y, elbowPos.z);
+
+	//_boneMatrices[armNode.boneIdx] = armMat;
+	//_boneMatrices[elbowNode.boneIdx] = elbowMat;
+
+	//// 根から再帰処理して親の影響を伝搬させたのちにコピー
+	//RecursiveMatrixMultipy(_boneNodeTable["センター"], XMMatrixIdentity());
+	//copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
 }
 
 void PMDActor::Draw()
 {
 	ID3D12GraphicsCommandList* cmdList = _dx12.CommandList().Get();
+
 	ID3D12DescriptorHeap* transheaps[] = { _transformHeap.Get() };
 	cmdList->SetDescriptorHeaps(1, transheaps);
-	cmdList->SetGraphicsRootDescriptorTable(1, _transformHeap->GetGPUDescriptorHandleForHeapStart());
+	cmdList->SetGraphicsRootDescriptorTable(1, 
+		_transformHeap->GetGPUDescriptorHandleForHeapStart());
+
 	cmdList->IASetVertexBuffers(0, 1, &_vbView);
 	cmdList->IASetIndexBuffer(&_ibView);
+
 	ID3D12DescriptorHeap* mdh[] = { _materialDescHeap.Get() };
 	cmdList->SetDescriptorHeaps(1, mdh);
-	D3D12_GPU_DESCRIPTOR_HANDLE materialH = _materialDescHeap->GetGPUDescriptorHandleForHeapStart();
+
+	D3D12_GPU_DESCRIPTOR_HANDLE materialH = 
+		_materialDescHeap->GetGPUDescriptorHandleForHeapStart();
+
 	unsigned int idxOffset = 0;
 	UINT cbvsrvIncSize = _dx12.Device()->GetDescriptorHandleIncrementSize(
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 5;
