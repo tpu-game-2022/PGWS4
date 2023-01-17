@@ -22,7 +22,8 @@
 ### 第九回授業
 ![PWS9回](https://user-images.githubusercontent.com/71625612/204300441-cd7ace1a-1e64-4840-afd0-5f4177770cc2.png)
 
-
+### 第十四回授業
+![PWS14回](https://user-images.githubusercontent.com/71625612/212845989-d9e397e5-252e-4f93-957d-681de609f8f7.png)
 
 # 締め切り
 次の授業の2日前（水曜日の授業であれば月曜日一杯）
