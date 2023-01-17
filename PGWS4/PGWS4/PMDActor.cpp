@@ -278,7 +278,54 @@ HRESULT PMDActor::LoadPMDFile(const char* path)
 		}
 	}
 
+	// 骨の数の読み込み
+	unsigned short boneNum = 0;
+	fread(&boneNum, sizeof(boneNum), 1, fp);
+
+#pragma pack(1)
+	// 読み込み用ボーン構造体
+	struct PMDBone {
+		char boneName[20];		// ボーン名
+		unsigned short parentNo;// 親ボーン番号
+		unsigned short nextNo;	// 先端のボーン番号
+		unsigned char type;		// ボーン種別
+		unsigned short ikBoneNo;// IKボーン番号
+		XMFLOAT3 pos;
+	};
+#pragma pack()
+
+	std::vector<PMDBone> pmdBones(boneNum);
+	fread(pmdBones.data(), sizeof(PMDBone), boneNum, fp);
+
 	fclose(fp);
+
+	// インデックス都名前の対応関係構築の為に後で使う
+	std::vector<std::string> boneNames(pmdBones.size());
+
+	// ボーンノードマップを作る
+	for (int idx = 0; idx < pmdBones.size(); ++idx) 
+	{
+		PMDBone& pb = pmdBones[idx];
+		boneNames[idx] = pb.boneName;
+		BoneNode& node = _boneNodeTable[pb.boneName];
+		node.boneIdx = idx;
+		node.startPos = pb.pos;
+	}
+	// 親子関係を構築する
+	for (PMDBone& pb : pmdBones)
+	{
+		// 親インデックスをチェック（ありえない番号なら飛ばす）
+		if (pmdBones.size() <= pb.parentNo)
+		{
+			continue;
+		}
+		std::string& parentName = boneNames[pb.parentNo];
+		_boneNodeTable[parentName].children.emplace_back(&_boneNodeTable[pb.boneName]);
+	}
+
+	// ボーンをすべて初期化する
+	_boneMatrices.resize(pmdBones.size());
+	std::fill(_boneMatrices.begin(), _boneMatrices.end(), XMMatrixIdentity());
 
 	return S_OK;
 }
@@ -412,7 +459,8 @@ void PMDActor::CreateMaterialAndTextureView()
 void PMDActor::CreateTransformView()
 {
 	//GPUバッファ作成
-	unsigned int buffSize = (sizeof(Transform) + 0xff) & ~0xff;
+	unsigned int buffSize = (static_cast<UINT>(sizeof(XMMATRIX) * (1 + _boneMatrices.size())));
+	buffSize = (buffSize + 0xff) & ~0xff;
 	CD3DX12_HEAP_PROPERTIES heapProp(D3D12_HEAP_TYPE_UPLOAD);
 	CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(buffSize);
 
@@ -425,9 +473,11 @@ void PMDActor::CreateTransformView()
 		IID_PPV_ARGS(_transformBuff.ReleaseAndGetAddressOf())
 	));
 
-	// 値のコピー
-	ThrowIfFailed(_transformBuff->Map(0, nullptr, (void**)&_mappedTransform));
-	*_mappedTransform = _transform;
+	// マップとコピー
+	ThrowIfFailed(_transformBuff->Map(0, nullptr, (void**)&_mappedMatrices));
+	
+	_mappedMatrices[0] = _transform.world;
+	std::copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
 
 	// ディスクリプタヒープ
 	D3D12_DESCRIPTOR_HEAP_DESC transformDescHeapDesc = {};
@@ -460,8 +510,6 @@ PMDActor::PMDActor(const char* filepath, PMDRenderer& renderer) :
 	CreateMaterialData();
 	CreateMaterialAndTextureView();
 
-	ThrowIfFailed(LoadPMDFile(filepath));
-
 	// 座標変換
 	_transform.world = XMMatrixIdentity();
 	CreateTransformView();
@@ -471,10 +519,43 @@ PMDActor::~PMDActor()
 {
 }
 
+void PMDActor::RecursiveMatrixMultipy(BoneNode& node, const DirectX::XMMATRIX& mat)
+{
+	_boneMatrices[node.boneIdx] = mat;
+
+	for (BoneNode* cnode : node.children)
+	{
+		RecursiveMatrixMultipy(*cnode, _boneMatrices[cnode->boneIdx] * mat);
+	}
+}
+
 void PMDActor::Update()
 {
-	_angle += 0.03f;
-	_mappedTransform->world = XMMatrixRotationY(_angle);
+	// 行列情報クリア（していないと前フレームのポーズが重ね掛けされてモデルが壊れる）
+	std::fill(_boneMatrices.begin(), _boneMatrices.end(), XMMatrixIdentity());
+
+	// 左腕を90°曲げる
+	BoneNode& armNode = _boneNodeTable["左腕"];
+	DirectX::XMFLOAT3& armPos = armNode.startPos;
+	DirectX::XMMATRIX armMat =
+		XMMatrixTranslation(-armPos.x, -armPos.y, -armPos.z)
+		* XMMatrixRotationZ(XM_PIDIV2)
+		* XMMatrixTranslation(armPos.x, armPos.y, armPos.z);
+
+	// 左ひじを-90°曲げる
+	BoneNode& elbowNode = _boneNodeTable["左ひじ"];
+	DirectX::XMFLOAT3& elbowPos = elbowNode.startPos;
+	DirectX::XMMATRIX elbowMat=
+		XMMatrixTranslation(-elbowPos.x, -elbowPos.y, -elbowPos.z)
+		* XMMatrixRotationZ(-XM_PIDIV2)
+		* XMMatrixTranslation(elbowPos.x, elbowPos.y, elbowPos.z);
+
+	_boneMatrices[armNode.boneIdx] = armMat;
+	_boneMatrices[elbowNode.boneIdx] = elbowMat;
+
+	// 根から再帰処理して親の影響を伝搬させたのちにコピー
+	RecursiveMatrixMultipy(_boneNodeTable["センター"], XMMatrixIdentity());
+	copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
 }
 
 void PMDActor::Draw()
