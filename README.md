@@ -50,5 +50,11 @@
 # 1月11日(水)までの授業の進捗
 ![2023-01-11 (3)](https://user-images.githubusercontent.com/71643403/211762420-b8d385bb-5331-4cff-887b-6e0e31bbf5ae.png)
 
+# 1月18日(水)までの授業の進捗
+![miku](https://user-images.githubusercontent.com/71643403/213374315-0be5b490-beb0-4e79-9a88-0b94545eaecb.gif)
+
+〇お借りさせて頂いたモーション〇
+https://www.nicovideo.jp/watch/sm15112748
+
 # 締め切り
 次の授業の2日前（水曜日の授業であれば月曜日一杯）
