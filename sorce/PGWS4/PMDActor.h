@@ -81,7 +81,26 @@ private:
 
 	void RecursiveMatrixMultipy(BoneNode& node, const DirectX::XMMATRIX& mat);
 
+	//キーフレーム構造体
+	struct KeyFrame {
+		unsigned int frameNo; //フレームNo
+		DirectX::XMVECTOR quaternion; //クオータニオン
+
+		DirectX::XMFLOAT2 p1, p2;
+		KeyFrame(
+			unsigned int fno,
+			const DirectX::XMVECTOR& q,const DirectX::XMFLOAT2 ip1,const DirectX::XMFLOAT2 ip2) :
+			frameNo(fno),
+			quaternion(q),p1(ip1),p2(ip2) {}
+	};
+	std::map<std::string, std::vector<KeyFrame>> _motiondata;
+
+	DWORD _startTime; //アニメーション開始時点のミリ秒時刻
+	unsigned int _duration = 0;
+	void MotionUpdate();
+
 public:
+	void PlayAnimation();
 	// 初期化の部分処理
 	HRESULT LoadPMDFile(const char* path);//PMDファイルのロード
 	void CreateMaterialData();//読み込んだマテリアルをもとにマテリアルバッファを作成
@@ -94,6 +113,8 @@ public:
 
 	///クローンは頂点およびマテリアルは共通のバッファを見るようにする
 	PMDActor* Clone();
+
+	void LoadVMDFile(const char* filepath, const char* name);
 
 	void Update();
 	void Draw();
