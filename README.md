@@ -58,3 +58,18 @@ https://user-images.githubusercontent.com/71632844/202159977-cbac4cee-3ea6-4810-
 第８章のチャレンジ課題まで実装しました。
 
 ![DX12テスト 2022_12_14 17_25_12](https://user-images.githubusercontent.com/71632844/208670181-52e8a969-73a5-438b-86b8-cb0b928d5306.png)
+
+# 第14回課題 結果画像
+第10章の途中まで実装しました。
+
+![DX12テスト 2023_01_11 17_56_36](https://user-images.githubusercontent.com/71632844/213905537-50b84f64-90a1-4d39-b7bf-29b02d7ba876.png)
+
+# 第15回課題 結果画像
+第８章のチャレンジ課題まで実装しました。  
+（ビバハピも実装してみましたが、こちらのプログラムのルートノードが腰に対し、素材の想定のルートノードが原点ぽいので少し挙動が変になってしまってます。）
+
+https://user-images.githubusercontent.com/71632844/213905553-2249213d-690f-4d43-9bd0-68e1d7e05d64.mp4
+https://user-images.githubusercontent.com/71632844/213905561-e3944ebf-ac28-4edd-ad0e-c8c07b557383.mp4
+https://user-images.githubusercontent.com/71632844/213905712-6ab3bac6-34d4-4f55-b552-0c8ca40bf58f.mp4
+
+
