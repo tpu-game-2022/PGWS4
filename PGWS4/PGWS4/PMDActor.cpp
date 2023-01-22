@@ -2,6 +2,9 @@
 #include "PMDRenderer.h"
 #include "Dx12Wrapper.h"
 #include <d3dx12.h>
+#include <algorithm>
+
+#pragma comment(lib,"winmm.lib")
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
@@ -529,33 +532,78 @@ void PMDActor::RecursiveMatrixMultipy(BoneNode& node, const DirectX::XMMATRIX& m
 	}
 }
 
-void PMDActor::Update()
+void PMDActor::LoadVMDFile(const char* filepath, const char* name)
 {
-	// 行列情報クリア（していないと前フレームのポーズが重ね掛けされてモデルが壊れる）
-	std::fill(_boneMatrices.begin(), _boneMatrices.end(), XMMatrixIdentity());
+	FILE* fp;
+	fopen_s(&fp, filepath, "rb");
+	fseek(fp, 50, SEEK_SET); // 最初の50バイトは飛ばしてOK
 
-	// 左腕を90°曲げる
-	BoneNode& armNode = _boneNodeTable["左腕"];
-	DirectX::XMFLOAT3& armPos = armNode.startPos;
-	DirectX::XMMATRIX armMat =
-		XMMatrixTranslation(-armPos.x, -armPos.y, -armPos.z)
-		* XMMatrixRotationZ(XM_PIDIV2)
-		* XMMatrixTranslation(armPos.x, armPos.y, armPos.z);
+	unsigned int keyframeNum = 0;
+	fread(&keyframeNum, sizeof(keyframeNum), 1, fp);
 
-	// 左ひじを-90°曲げる
-	BoneNode& elbowNode = _boneNodeTable["左ひじ"];
-	DirectX::XMFLOAT3& elbowPos = elbowNode.startPos;
-	DirectX::XMMATRIX elbowMat=
-		XMMatrixTranslation(-elbowPos.x, -elbowPos.y, -elbowPos.z)
-		* XMMatrixRotationZ(-XM_PIDIV2)
-		* XMMatrixTranslation(elbowPos.x, elbowPos.y, elbowPos.z);
+	struct VMDKeyFrame
+	{
+		char boneName[15];			// ボーン名
+		unsigned int frameNo;		// フレーム番号（読み込み時は現在のフレーム位置を0とした相対位置）
+		XMFLOAT3 location;			// 位置
+		XMFLOAT4 quaternion;		// Quaternion // 回転
+		unsigned char bezier[64];	// [4][4][4] ベジェ補間パラメータ
+	};
 
-	_boneMatrices[armNode.boneIdx] = armMat;
-	_boneMatrices[elbowNode.boneIdx] = elbowMat;
+	std::vector<VMDKeyFrame>keyframes(keyframeNum);
+	for (VMDKeyFrame& keyframe : keyframes)
+	{
+		fread(keyframe.boneName, sizeof(keyframe.boneName), 1, fp);	// ボーン名
+		fread(&keyframe.frameNo, sizeof(keyframe.frameNo) +			// フレーム番号
+			sizeof(keyframe.location) +								// 位置（IKの時に使用予定）
+			sizeof(keyframe.quaternion) +							// クオータニオン
+			sizeof(keyframe.bezier),								// 補間ベジェデータ
+			1, fp);
+	}
 
-	// 根から再帰処理して親の影響を伝搬させたのちにコピー
+	fclose(fp);
+
+	// VMDのキーフレームデータから、実際に使用するキーフレームテーブルへ変換
+	_duration = 0;
+	for (VMDKeyFrame& f : keyframes)
+	{
+		_motiondata[f.boneName].emplace_back(
+			KeyFrame(f.frameNo,
+				XMLoadFloat4(&f.quaternion),
+				XMFLOAT2((float)f.bezier[ 3] / 127.0f, (float)f.bezier[ 7] / 127.0f),
+				XMFLOAT2((float)f.bezier[11] / 127.0f, (float)f.bezier[15] / 127.0f)));
+		_duration = std::max<unsigned int>(_duration, f.frameNo);
+	}
+
+	for (auto& motion : _motiondata)
+	{
+		sort(motion.second.begin(), motion.second.end(),
+			[](const KeyFrame& lval, const KeyFrame& rval) {
+				return lval.frameNo <= rval.frameNo;
+			});
+	}
+
+	for (auto& bonemotion : _motiondata)
+	{
+		BoneNode& node = _boneNodeTable[bonemotion.first];
+		DirectX::XMFLOAT3& pos = node.startPos;
+		DirectX::XMMATRIX mat =
+			XMMatrixTranslation(-pos.x, -pos.y, -pos.z) *
+			XMMatrixRotationQuaternion(bonemotion.second[0].quaternion) *
+			XMMatrixTranslation(pos.x, pos.y, pos.z);
+		_boneMatrices[node.boneIdx] = mat;
+	}
+
 	RecursiveMatrixMultipy(_boneNodeTable["センター"], XMMatrixIdentity());
 	copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
+}
+
+void PMDActor::Update()
+{
+	/*_angle += 0.03f;
+	_mappedMatrices[0] = XMMatrixRotationY(_angle);*/
+
+	MotionUpdate();
 }
 
 void PMDActor::Draw()
@@ -588,4 +636,94 @@ void PMDActor::Draw()
 		materialH.ptr += cbvsrvIncSize;
 		idxOffset += m.indicesNum;
 	}
+}
+
+void PMDActor::PlayAnimation()
+{
+	_startTime = timeGetTime();
+}
+
+static float GetYFromXOnBezier(float x, const XMFLOAT2& a, const XMFLOAT2& b)
+{
+	if (a.x == a.y && b.x == b.y)return x; // 計算不要
+
+	float t = x;
+	const float k0 = 1.0f + 3.0f * a.x - 3.0f * b.x; // t^3の係数
+	const float k1 = 3.0f * b.x - 6.0f * a.x; // t^2の係数
+	const float k2 = 3.0f * a.x; // tの係数
+
+	constexpr float epsilon = 0.0005f; // 誤差の範囲内か同課に使用する定数
+	constexpr uint8_t n = 12; // 最大ループ回数
+
+	for (int i = 0; i < n; i++)
+	{
+		// f(t)求めまーす
+		auto ft = k0 * t * t * t + k1 * t * t + k2 * t - x;
+		// もし結果が0に近い（誤差の範囲内）なら打ち切り
+		if (ft <= epsilon && ft >= -epsilon)break;
+
+		t -= ft / 2.0f;
+	}
+	// 既に求めたいtは求めているのでyを計算する
+	float r = 1.0f - t;
+	return t * t * t + 3 * t * t * r * b.y + 3 * t * r * r * a.y;
+}
+
+void PMDActor::MotionUpdate()
+{
+	DWORD elapsedTime = timeGetTime() - _startTime; // 計か時間を測る
+	unsigned int frameNo = (30 * elapsedTime / 1000);
+
+	// ここからループの為の追加コード
+	if (frameNo > _duration)
+	{
+		_startTime = timeGetTime();
+		frameNo = 0;
+	}
+
+	// 行列情報クリア（していないと前フレームのポーズが重ね掛けされえてモデルが壊れる）
+	std::fill(_boneMatrices.begin(), _boneMatrices.end(), XMMatrixIdentity());
+
+	// モーションデータ更新
+	for (auto& bonemotion : _motiondata)
+	{
+		auto itBoneNode = _boneNodeTable.find(bonemotion.first);
+		if (itBoneNode == _boneNodeTable.end())continue;
+		BoneNode& node = itBoneNode->second;
+		// 合致するものを探す
+		auto& keyframes = bonemotion.second;
+
+		auto rit = find_if(keyframes.rbegin(), keyframes.rend(),
+			[frameNo](const KeyFrame& keyframe) {
+				return keyframe.frameNo <= frameNo;
+			});
+		if (rit == keyframes.rend())continue; // 合致するのもがなければ飛ばす
+
+		DirectX::XMMATRIX rotation;
+		auto it = rit.base();
+		if (it != keyframes.end())
+		{
+			auto t = static_cast<float>(frameNo - rit->frameNo) /
+				static_cast<float>(it->frameNo - rit->frameNo);
+			t = GetYFromXOnBezier(t, it->p1, it->p2);
+
+			rotation = XMMatrixRotationQuaternion(
+				XMQuaternionSlerp(rit->quaternion, it->quaternion, t));
+		}
+		else
+		{
+			rotation = XMMatrixRotationQuaternion(rit->quaternion);
+		}
+
+		DirectX::XMFLOAT3& pos = node.startPos;
+		DirectX::XMMATRIX mat =
+			XMMatrixTranslation(-pos.x, -pos.y, -pos.z) *	// 原点に戻し
+			rotation *	// 回転
+			XMMatrixTranslation(pos.x, pos.y, pos.z);	// 元の座標に戻す
+		_boneMatrices[node.boneIdx] = mat;
+	}
+
+	// 親の影響の反映
+	RecursiveMatrixMultipy(_boneNodeTable["センター"], XMMatrixIdentity());
+	copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
 }
