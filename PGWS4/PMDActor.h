@@ -79,6 +79,23 @@ private:
 	std::map<std::string, BoneNode> _boneNodeTable; //名前で骨を検索できるように
 	void RecursiveMatrixMutiply(BoneNode& node, const DirectX::XMMATRIX& mat);
 
+	//キーフレーム構造体
+	struct KeyFrame {
+		unsigned int frameNo;//フレームNo.(アニメーション開始からの経過時間)
+		DirectX::XMVECTOR quaternion;//クォータニオン
+		DirectX::XMFLOAT2 p1, p2;
+		KeyFrame(
+			unsigned int fno, const DirectX::XMVECTOR& q,
+			const DirectX::XMFLOAT2 ip1, const DirectX::XMFLOAT2 ip2) :
+			frameNo(fno),
+			quaternion(q), p1(ip1), p2(ip2) {}
+	};
+	std::map<std::string, std::vector<KeyFrame>> _motiondata;
+
+	DWORD _startTime;//アニメーション開始時のミリ秒時刻
+	unsigned int _duration = 0;
+	void MotionUpdate();
+
 public:
 	// 初期化の部分処理
 	HRESULT LoadPMDFile(const char* path);//PMDファイルのロード
@@ -93,6 +110,10 @@ public:
 	//クローンは頂点およびマテリアルは共通のバッファを見るようにする
 	PMDActor* Clone();
 
+	void LoadVMDFile(const char* filepath, const char* name);
+
 	void Update();
 	void Draw();
+
+	void PlayAnimation();
 };
