@@ -2,6 +2,9 @@
 #include "PMDRenderer.h"
 #include "Dx12Wrapper.h"
 #include <d3dx12.h>
+#include <algorithm>
+
+#pragma comment(lib,"winmm.lib")
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
@@ -517,6 +520,159 @@ PMDActor::~PMDActor()
 
 }
 
+static float GetYFromOnBezier(float x, const XMFLOAT2& a, const XMFLOAT2& b)
+{
+	if (a.x == a.y && b.x == b.y)return x;//計算不要
+
+	float t = x;
+	const float k0 = 1.0f + 3.0f * a.x - 3.0f * b.x;	//t^3の係数
+	const float k1 = 3.0f * b.x - 6.0f * a.x;			//t^2の係数
+	const float k2 = 3.0f * a.x;						//tの係数
+
+	constexpr float epsilon = 0.0005f;//誤差の範囲内かどうかに使用する関数
+	constexpr uint8_t n = 12;//最大ループ回数
+
+	for (int i = 0; i < n; ++i) {
+		//f(t)求める
+		auto ft = k0 * t * t * t + k1 * t * t + k2 * t - x;
+		//もし結果が0に近い(誤差の範囲内)なら打ち切り
+		if (ft <= epsilon && ft >= -epsilon)break;
+
+		t -= ft / 2.0f;
+	}
+	//すでに求めたいtは求めているのでyを計算する
+	float r = 1.0f - t;
+	return t * t * t + 3 * t * t * r * b.y + 3 * t * r * r * a.y;
+}
+
+void PMDActor::LoadVMDFile(const char* filepath, const char* name)
+{
+	FILE* fp;
+	fopen_s(&fp, filepath, "rb");
+	fseek(fp, 50, SEEK_SET); //最初の50バイトは飛ばしてOK
+
+	unsigned int keyframeNum = 0;
+	fread(&keyframeNum, sizeof(keyframeNum), 1, fp);
+
+	struct VMDKeyFrame
+	{
+		char boneName[15];			//ボーン名
+		unsigned int frameNo;		//フレーム番号(読み込み時は現在のフレームを0とした相対位置)
+		XMFLOAT3 location;			//位置
+		XMFLOAT4 quaternion;		//Quaternion // 回転
+		unsigned char bazier[64];	//[4][4][4] ベジエ補完パラメータ
+	};
+	std::vector<VMDKeyFrame> keyframes(keyframeNum);
+	for (VMDKeyFrame& keyframe : keyframes)
+	{
+		fread(keyframe.boneName, sizeof(keyframe.boneName), 1, fp);
+		fread(&keyframe.frameNo, sizeof(keyframe.frameNo) +
+			sizeof(keyframe.location) +
+			sizeof(keyframe.quaternion) +
+			sizeof(keyframe.bazier),
+			1, fp);
+	}
+
+	fclose(fp);
+
+	//VMDのキーフレームデータから、実際に使用するキーフレームテーブルへ変換
+	_duration = 0;
+	for (VMDKeyFrame& f : keyframes)
+	{
+		_motiondata[f.boneName].emplace_back(
+			KeyFrame(f.frameNo,
+				XMLoadFloat4(&f.quaternion),
+				XMFLOAT2((float)f.bazier[ 3] / 127.0f, (float)f.bazier[ 7] / 127.0f),
+				XMFLOAT2((float)f.bazier[11] / 127.0f, (float)f.bazier[15] / 1127.0f)));
+
+		_duration = std::max<unsigned int>(_duration, f.frameNo);
+	}
+
+	for (auto& motion : _motiondata)
+	{
+		sort(motion.second.begin(), motion.second.end(),
+			[](const KeyFrame& lval, const KeyFrame& rval) {
+				return lval.frameNo <= rval.frameNo;
+			});
+	}
+
+	for (auto& bonemotion : _motiondata)
+	{
+		BoneNode& node = _boneNodeTable[bonemotion.first];
+		DirectX::XMFLOAT3& pos = node.startPos;
+		DirectX::XMMATRIX mat =
+			XMMatrixTranslation(-pos.x, -pos.y, -pos.z) *
+			XMMatrixRotationQuaternion(bonemotion.second[0].quaternion) *
+			XMMatrixTranslation(pos.x, pos.y, pos.z);
+		_boneMatrices[node.boneIdx] = mat;
+	}
+
+	RecursiveMatrixMutiply(_boneNodeTable["センター"], XMMatrixIdentity());
+	copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
+}
+
+void PMDActor::PlayAnimation()
+{
+	_startTime = timeGetTime();
+}
+
+void PMDActor::MotionUpdate()
+{
+	DWORD elapsedTime = timeGetTime() - _startTime;//経過時間を測る
+	unsigned int frameNo = (30 * elapsedTime / 1000);
+
+	//ここからループのための追加コード
+	if (frameNo > _duration)
+	{
+		_startTime = timeGetTime();
+		frameNo = 0;
+	}
+
+	//行列情報クリア(しないと前フレームのポーズが重ね掛けされてモデルが壊れる)
+	std::fill(_boneMatrices.begin(), _boneMatrices.end(), XMMatrixIdentity());
+
+	//モーションデータ更新
+	for (auto& bonemotion : _motiondata)
+	{
+		auto itBoneNode = _boneNodeTable.find(bonemotion.first);
+		if (itBoneNode == _boneNodeTable.end())continue;
+		BoneNode& node = itBoneNode->second;
+		//合致するものを探す
+		auto& keyframes = bonemotion.second;
+
+		auto rit = find_if(keyframes.rbegin(), keyframes.rend(),
+			[frameNo](const KeyFrame& keyframe) {
+				return keyframe.frameNo <= frameNo;
+			});
+		if (rit == keyframes.rend()) continue;//合致するものがなければ飛ばす
+
+		DirectX::XMMATRIX rotation;
+		auto it = rit.base();
+		if (it != keyframes.end()) {
+			float t = static_cast<float>(frameNo - rit->frameNo) /
+				static_cast<float>(it->frameNo - rit->frameNo);
+			t = GetYFromOnBezier(t, it->p1, it->p2);
+
+			rotation = XMMatrixRotationQuaternion(
+				XMQuaternionSlerp(rit->quaternion, it->quaternion, t));
+		}
+		else {
+			rotation = XMMatrixRotationQuaternion(rit->quaternion);
+		}
+
+		DirectX::XMFLOAT3& pos = node.startPos;
+		DirectX::XMMATRIX mat =
+			XMMatrixTranslation(-pos.x, -pos.y, -pos.z) *	//原点に戻し
+			rotation * //回転
+			//XMMatrixRotationQuaternion(rit->quaternion) *	//回転
+			XMMatrixTranslation(pos.x, pos.y, pos.z);		//元の座標に戻す
+		_boneMatrices[node.boneIdx] = mat;
+	}
+	//親の影響の反映
+	RecursiveMatrixMutiply(_boneNodeTable["センター"], XMMatrixIdentity());
+	copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
+}
+
 void PMDActor::RecursiveMatrixMutiply(BoneNode& node, const DirectX::XMMATRIX& mat)
 {
 	_boneMatrices[node.boneIdx] = mat;
@@ -528,9 +684,11 @@ void PMDActor::RecursiveMatrixMutiply(BoneNode& node, const DirectX::XMMATRIX& m
 
 void PMDActor::Update()
 {
+	
 	//_angle += 0.03f;
-	//_mappedMatrices[0] = XMMatrixRotationY(_angle);
-
+	_mappedMatrices[0] = XMMatrixRotationY(_angle);
+	MotionUpdate();
+	/*
 	//行列情報クリア(しないと前フレームのポーズが重ね掛けされてモデルが壊れる)
 	std::fill(_boneMatrices.begin(), _boneMatrices.end(), XMMatrixIdentity());
 
@@ -556,6 +714,7 @@ void PMDActor::Update()
 	//根から再起処理して親の影響を伝搬させたのちにコピー
 	RecursiveMatrixMutiply(_boneNodeTable["センター"], XMMatrixIdentity());
 	copy(_boneMatrices.begin(), _boneMatrices.end(), _mappedMatrices + 1);
+	*/
 }
 void PMDActor::Draw()
 {
