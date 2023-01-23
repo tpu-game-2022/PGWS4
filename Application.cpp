@@ -79,10 +79,14 @@ bool Application::Init()
 	_dx12.reset(new Dx12Wrapper(_hwnd, _window_width, _window_height));
 	_pmdRenderer.reset(new PMDRenderer(*_dx12));
 
-	//	_pmdActor.reset(new PMDActor("Model/巡音ルカ.pmd", *_pmdRenderer));
+		_pmdActor.reset(new PMDActor("Model/巡音ルカ.pmd", *_pmdRenderer));
 	//	_pmdActor.reset(new PMDActor("Model/初音ミクmetal.pmd", *_pmdRenderer));
-	_pmdActor.reset(new PMDActor("Model/初音ミク.pmd", *_pmdRenderer));
-	_pmdActor->LoadVMDFile("motion/pose.vmd", "pose");
+	//  _pmdActor.reset(new PMDActor("Model/初音ミク.pmd", *_pmdRenderer));
+	//  _pmdActor->LoadVMDFile("motion/pose.vmd", "pose");
+	//  _pmdActor->LoadVMDFile("motion/swing.vmd", "pose");
+	//  _pmdActor->LoadVMDFile("motion/swing2.vmd", "pose");
+	  _pmdActor->LoadVMDFile("motion/motion.vmd", "pose");
+	_pmdActor->PlayAnimation();
 
 	return true;
 }

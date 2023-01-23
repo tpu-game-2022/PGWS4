@@ -83,13 +83,20 @@ private:
 	struct KeyFrame {
 		unsigned int frameNo;//フレームNo.(アニメーション開始からの経過時間)
 		DirectX::XMVECTOR quaternion;//クオータニオン
+		DirectX::XMFLOAT2 p1, p2;
+		//KeyFrame() {}
 		KeyFrame(
-			unsigned int fno,
-			const DirectX::XMVECTOR& q) :
+			unsigned int fno, const DirectX::XMVECTOR& q,
+			const DirectX::XMFLOAT2 ip1, const DirectX::XMFLOAT2 ip2) :
 			frameNo(fno),
-			quaternion(q) {}
+			quaternion(q), p1(ip1), p2(ip2) {}
 	};
-	std::map<std::string, std::vector<KeyFrame>>_motiondata;
+	std::map<std::string, std::vector< KeyFrame>>_motiondata;
+
+	DWORD _startTime;//アニメーション開始時点のミリ秒時刻
+	unsigned int _duration = 0;
+	void MotionUpdate();
+
 
 	float _angle;//テスト用Y軸回転
 
@@ -99,6 +106,9 @@ public:
 	void CreateMaterialData();//読み込んだマテリアルをもとにマテリアルバッファを作成
 	void CreateMaterialAndTextureView();//マテリアル＆テクスチャのビューを作成
 	void CreateTransformView();
+
+public:
+	void PlayAnimation();
 
 public:
 	PMDActor(const char* filepath, PMDRenderer& renderer);
