@@ -82,6 +82,8 @@ bool Application::Init()
 //	_pmdActor.reset(new PMDActor("Model/巡音ルカ.pmd", *_pmdRenderer));
 //	_pmdActor.reset(new PMDActor("Model/初音ミクmetal.pmd", *_pmdRenderer));
 	_pmdActor.reset(new PMDActor("Model/初音ミク.pmd", *_pmdRenderer));
+	_pmdActor->LoadVMDFile("motion/恋愛サーキュレーション-ミク.vmd", "pose");
+	_pmdActor->PlayAnimatin();
 
 	return true;
 }

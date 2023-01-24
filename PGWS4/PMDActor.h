@@ -80,6 +80,23 @@ private:
 
 	float _angle;//テスト用Y軸回転
 
+	//キーフレーム構造体
+	struct KeyFrame {
+		unsigned int frameNo;
+		DirectX::XMVECTOR quaternion;
+		DirectX::XMFLOAT2 p1, p2;
+		KeyFrame(
+			unsigned int fno,
+			const DirectX::XMVECTOR&q, const DirectX::XMFLOAT2 ip1, const DirectX::XMFLOAT2 ip2):
+			frameNo(fno),
+			quaternion(q), p1(ip1), p2(ip2) {}
+	};
+	std::map<std::string, std::vector<KeyFrame>> _motiondata;
+
+	DWORD _startTime;
+	unsigned int _duration = 0;
+	void MotionUpdate();
+
 	void RecursiveMatrixMultipy(BoneNode& node, const DirectX::XMMATRIX& mat);
 
 public:
@@ -88,6 +105,7 @@ public:
 	void CreateMaterialData();//読み込んだマテリアルをもとにマテリアルバッファを作成
 	void CreateMaterialAndTextureView();//マテリアル＆テクスチャのビューを作成
 	void CreateTransformView();
+	void PlayAnimatin();
 
 public:
 	PMDActor(const char* filepath, PMDRenderer& renderer);
@@ -95,6 +113,8 @@ public:
 
 	///クローンは頂点およびマテリアルは共通のバッファを見るようにする
 	PMDActor* Clone();
+
+	void LoadVMDFile(const char* filepath, const char* name);
 
 	void Update();
 	void Draw();
