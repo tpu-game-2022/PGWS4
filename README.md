@@ -9,8 +9,11 @@
 
 # 結果画像
 
-10章-9 VMDデータを読み込んでポーズを付ける
-![進捗画像](https://user-images.githubusercontent.com/71791660/212693326-0497e907-45c0-4d86-864b-db2407c6c75a.jpg)
+10章-12 ベジェによるイーズインイーズアウトの実装
+![結果画像](https://user-images.githubusercontent.com/71791660/214274888-18d7a9fc-9010-41ff-a194-0359aeacf816.gif)
+
+10章-チャレンジ 他のアニメーションを探して再生してみよう
+![結果画像他アニメ](https://user-images.githubusercontent.com/71791660/214274911-de351541-d182-4ea2-88f7-186e93e74d1d.gif)
 
 
 # 締め切り
