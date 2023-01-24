@@ -7,10 +7,10 @@
 using namespace DirectX;
 using namespace Microsoft::WRL;
 
-// @brief ƒRƒ“ƒ\[ƒ‹‰æ–Ê‚ÉƒtƒH[ƒ}ƒbƒg•t‚«•¶š—ñ‚ğ•\¦
-// @param format ƒtƒH[ƒ}ƒbƒgi%d ‚Æ‚© %f ‚Æ‚©‚Ìj
-// @param ‰Â•Ï’·ˆø”
-// @remarks ‚±‚ÌŠÖ”‚ÍƒfƒoƒbƒO—p‚Å‚·BƒfƒoƒbƒO‚É‚µ‚©“®ì‚µ‚Ü‚¹‚ñ
+// @brief ã‚³ãƒ³ã‚½ãƒ¼ãƒ«ç”»é¢ã«ãƒ•ã‚©ãƒ¼ãƒãƒƒãƒˆä»˜ãæ–‡å­—åˆ—ã‚’è¡¨ç¤º
+// @param format ãƒ•ã‚©ãƒ¼ãƒãƒƒãƒˆï¼ˆ%d ã¨ã‹ %f ã¨ã‹ã®ï¼‰
+// @param å¯å¤‰é•·å¼•æ•°
+// @remarks ã“ã®é–¢æ•°ã¯ãƒ‡ãƒãƒƒã‚°ç”¨ã§ã™ã€‚ãƒ‡ãƒãƒƒã‚°æ™‚ã«ã—ã‹å‹•ä½œã—ã¾ã›ã‚“
 static void DebugOutputFormatString(const char* format, ...)
 {
 #ifdef _DEBUG
@@ -29,66 +29,68 @@ static inline void ThrowIfFailed(HRESULT hr)
 	}
 }
 
-// –Ê“|‚¾‚¯‚Ç‘‚©‚È‚¯‚ê‚Î‚¢‚¯‚È‚¢ŠÖ”
+// é¢å€’ã ã‘ã©æ›¸ã‹ãªã‘ã‚Œã°ã„ã‘ãªã„é–¢æ•°
 static LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
-	// ƒEƒBƒ“ƒhƒE‚ª”jŠü‚³‚ê‚½‚çŒÄ‚Î‚ê‚é
+	// ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ãŒç ´æ£„ã•ã‚ŒãŸã‚‰å‘¼ã°ã‚Œã‚‹
 	if (msg == WM_DESTROY)
 	{
-		PostQuitMessage(0); // OS ‚É‘Î‚µ‚Äu‚à‚¤‚±‚ÌƒAƒvƒŠ‚ÍI‚í‚év‚Æ“`‚¦‚é
+		PostQuitMessage(0); // OS ã«å¯¾ã—ã¦ã€Œã‚‚ã†ã“ã®ã‚¢ãƒ—ãƒªã¯çµ‚ã‚ã‚‹ã€ã¨ä¼ãˆã‚‹
 		return 0;
 	}
-	return DefWindowProc(hwnd, msg, wparam, lparam); // Šù’è‚Ìˆ—‚ğs‚¤
+	return DefWindowProc(hwnd, msg, wparam, lparam); // æ—¢å®šã®å‡¦ç†ã‚’è¡Œã†
 }
 
 
 static HWND CreateGameWindow(WNDCLASSEX& windowClass, UINT width, UINT height)
 {
 	windowClass.cbSize = sizeof(WNDCLASSEX);
-	windowClass.lpfnWndProc = (WNDPROC)WindowProcedure; // ƒR[ƒ‹ƒoƒbƒNŠÖ”‚Ìw’è
-	windowClass.lpszClassName = _T("DX12Sample"); // ƒAƒvƒŠƒP[ƒVƒ‡ƒ“ƒNƒ‰ƒX–¼i“K“–‚Å‚æ‚¢j
-	windowClass.hInstance = GetModuleHandle(nullptr); // ƒnƒ“ƒhƒ‹‚Ìæ“¾
+	windowClass.lpfnWndProc = (WNDPROC)WindowProcedure; // ã‚³ãƒ¼ãƒ«ãƒãƒƒã‚¯é–¢æ•°ã®æŒ‡å®š
+	windowClass.lpszClassName = _T("DX12Sample"); // ã‚¢ãƒ—ãƒªã‚±ãƒ¼ã‚·ãƒ§ãƒ³ã‚¯ãƒ©ã‚¹åï¼ˆé©å½“ã§ã‚ˆã„ï¼‰
+	windowClass.hInstance = GetModuleHandle(nullptr); // ãƒãƒ³ãƒ‰ãƒ«ã®å–å¾—
 
-	RegisterClassEx(&windowClass); // ƒAƒvƒŠƒP[ƒVƒ‡ƒ“ƒNƒ‰ƒXiƒEƒBƒ“ƒhƒEƒNƒ‰ƒX‚Ìw’è‚ğ OS ‚É“`‚¦‚éj
+	RegisterClassEx(&windowClass); // ã‚¢ãƒ—ãƒªã‚±ãƒ¼ã‚·ãƒ§ãƒ³ã‚¯ãƒ©ã‚¹ï¼ˆã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚¯ãƒ©ã‚¹ã®æŒ‡å®šã‚’ OS ã«ä¼ãˆã‚‹ï¼‰
 
-	RECT wrc = { 0, 0, (LONG)width, (LONG)height }; // ƒEƒBƒ“ƒhƒEƒTƒCƒY‚ğŒˆ‚ß‚é
+	RECT wrc = { 0, 0, (LONG)width, (LONG)height }; // ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚µã‚¤ã‚ºã‚’æ±ºã‚ã‚‹
 
-	// ŠÖ”‚ğg‚Á‚ÄƒEƒBƒ“ƒhƒE‚ÌƒTƒCƒY‚ğ•â³‚·‚é
+	// é–¢æ•°ã‚’ä½¿ã£ã¦ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã®ã‚µã‚¤ã‚ºã‚’è£œæ­£ã™ã‚‹
 	AdjustWindowRect(&wrc, WS_OVERLAPPEDWINDOW, false);
-	// ƒEƒBƒ“ƒhƒEƒIƒuƒWƒFƒNƒg‚Ì¶¬
-	return CreateWindow(windowClass.lpszClassName, // ƒNƒ‰ƒX–¼w’è
-		_T("DX12 ƒeƒXƒg "), // ƒ^ƒCƒgƒ‹ƒo[‚Ì•¶š
-		WS_OVERLAPPEDWINDOW, // ƒ^ƒCƒgƒ‹ƒo[‚Æ‹«ŠEü‚ª‚ ‚éƒEƒBƒ“ƒhƒE
-		CW_USEDEFAULT, // •\¦ x À•W‚Í OS ‚É‚¨”C‚¹
-		CW_USEDEFAULT, // •\¦ y À•W‚Í OS ‚É‚¨”C‚¹
-		wrc.right - wrc.left, // ƒEƒBƒ“ƒhƒE•
-		wrc.bottom - wrc.top, // ƒEƒBƒ“ƒhƒE‚
-		nullptr, // eƒEƒBƒ“ƒhƒEƒnƒ“ƒhƒ‹
-		nullptr, // ƒƒjƒ…[ƒnƒ“ƒhƒ‹
-		windowClass.hInstance, // ŒÄ‚Ño‚µƒAƒvƒŠƒP[ƒVƒ‡ƒ“ƒnƒ“ƒhƒ‹
-		nullptr); // ’Ç‰Áƒpƒ‰ƒ[ƒ^[
+	// ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã®ç”Ÿæˆ
+	return CreateWindow(windowClass.lpszClassName, // ã‚¯ãƒ©ã‚¹åæŒ‡å®š
+		_T("DX12 ãƒ†ã‚¹ãƒˆ "), // ã‚¿ã‚¤ãƒˆãƒ«ãƒãƒ¼ã®æ–‡å­—
+		WS_OVERLAPPEDWINDOW, // ã‚¿ã‚¤ãƒˆãƒ«ãƒãƒ¼ã¨å¢ƒç•Œç·šãŒã‚ã‚‹ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦
+		CW_USEDEFAULT, // è¡¨ç¤º x åº§æ¨™ã¯ OS ã«ãŠä»»ã›
+		CW_USEDEFAULT, // è¡¨ç¤º y åº§æ¨™ã¯ OS ã«ãŠä»»ã›
+		wrc.right - wrc.left, // ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦å¹…
+		wrc.bottom - wrc.top, // ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦é«˜
+		nullptr, // è¦ªã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ãƒãƒ³ãƒ‰ãƒ«
+		nullptr, // ãƒ¡ãƒ‹ãƒ¥ãƒ¼ãƒãƒ³ãƒ‰ãƒ«
+		windowClass.hInstance, // å‘¼ã³å‡ºã—ã‚¢ãƒ—ãƒªã‚±ãƒ¼ã‚·ãƒ§ãƒ³ãƒãƒ³ãƒ‰ãƒ«
+		nullptr); // è¿½åŠ ãƒ‘ãƒ©ãƒ¡ãƒ¼ã‚¿ãƒ¼
 }
 
 
 bool Application::Init()
 {
-	ThrowIfFailed(CoInitializeEx(0, COINIT_MULTITHREADED));// ŒÄ‚Î‚È‚¢‚Æ“®ì‚µ‚È‚¢ƒƒ\ƒbƒh‚ª‚ ‚é
+	ThrowIfFailed(CoInitializeEx(0, COINIT_MULTITHREADED));// å‘¼ã°ãªã„ã¨å‹•ä½œã—ãªã„ãƒ¡ã‚½ãƒƒãƒ‰ãŒã‚ã‚‹
 
-	_hwnd = CreateGameWindow(_windowClass, _window_width, _window_height);// ƒEƒBƒ“ƒhƒE¶¬
+	_hwnd = CreateGameWindow(_windowClass, _window_width, _window_height);// ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ç”Ÿæˆ
 
 	_dx12.reset(new Dx12Wrapper(_hwnd, _window_width, _window_height));
 	_pmdRenderer.reset(new PMDRenderer(*_dx12));
 
-	//	_pmdActor.reset(new PMDActor("Model/„‰¹ƒ‹ƒJ.pmd", *_pmdRenderer));
-	//	_pmdActor.reset(new PMDActor("Model/‰‰¹ƒ~ƒNmetal.pmd", *_pmdRenderer));
-	_pmdActor.reset(new PMDActor("Model/‰‰¹ƒ~ƒN.pmd", *_pmdRenderer));
+	//	_pmdActor.reset(new PMDActor("Model/å·¡éŸ³ãƒ«ã‚«.pmd", *_pmdRenderer));
+	//	_pmdActor.reset(new PMDActor("Model/åˆéŸ³ãƒŸã‚¯metal.pmd", *_pmdRenderer));
+	_pmdActor.reset(new PMDActor("Model/æ±é›²å½°äºº.pmd", *_pmdRenderer));
+	_pmdActor->LoadVMDFile("motion/ifudodo.vmd", "pose");
+	_pmdActor->PlayAnimation();
 
 	return true;
 }
 
 void Application::Run()
 {
-	//ƒEƒBƒ“ƒhƒE•\¦
+	//ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦è¡¨ç¤º
 	ShowWindow(_hwnd, SW_SHOW);
 
 	while (true)
@@ -96,7 +98,7 @@ void Application::Run()
 		MSG msg;
 		if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
 		{
-			// ƒAƒvƒŠƒP[ƒVƒ‡ƒ“‚ªI‚í‚é‚Æ‚«‚É message ‚ª WM_QUIT ‚É‚È‚é
+			// ã‚¢ãƒ—ãƒªã‚±ãƒ¼ã‚·ãƒ§ãƒ³ãŒçµ‚ã‚ã‚‹ã¨ãã« message ãŒ WM_QUIT ã«ãªã‚‹
 			if (msg.message == WM_QUIT)
 			{
 				break;
@@ -125,7 +127,7 @@ void Application::Run()
 
 void Application::Terminate()
 {
-	//‚à‚¤ƒNƒ‰ƒXg‚í‚ñ‚©‚ç“o˜^‰ğœ
+	//ã‚‚ã†ã‚¯ãƒ©ã‚¹ä½¿ã‚ã‚“ã‹ã‚‰ç™»éŒ²è§£é™¤
 	UnregisterClass(_windowClass.lpszClassName, _windowClass.hInstance);
 }
 
