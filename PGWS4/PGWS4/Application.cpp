@@ -82,6 +82,10 @@ bool Application::Init()
 	//	_pmdActor.reset(new PMDActor("Model/巡音ルカ.pmd", *_pmdRenderer));
 	//	_pmdActor.reset(new PMDActor("Model/初音ミクmetal.pmd", *_pmdRenderer));
 	_pmdActor.reset(new PMDActor("Model/初音ミク.pmd", *_pmdRenderer));
+	_pmdActor->LoadVMDFile("motion/swing.vmd", "pose");
+	//_pmdActor->LoadVMDFile("motion/motion.vmd", "pose");
+	//_pmdActor->LoadVMDFile("motion/06A_反動つけて大きくジャンプ.vmd", "pose");
+	_pmdActor->PlayAnimaton();
 
 	return true;
 }
