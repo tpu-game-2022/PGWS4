@@ -82,7 +82,9 @@ bool Application::Init()
 	//	_pmdActor.reset(new PMDActor("Model/巡音ルカ.pmd", *_pmdRenderer));
 	//	_pmdActor.reset(new PMDActor("Model/初音ミクmetal.pmd", *_pmdRenderer));
 	_pmdActor.reset(new PMDActor("Model/初音ミク.pmd", *_pmdRenderer));
-	_pmdActor->LoadVMDFile("motion/pose.vmd", "pose");
+	//_pmdActor->LoadVMDFile("motion/pose.vmd", "pose");
+	_pmdActor->LoadVMDFile("motion/a_tough_cookie_ato_miku.vmd", "pose");
+	_pmdActor->PlayAnimation();
 
 	return true;
 }
