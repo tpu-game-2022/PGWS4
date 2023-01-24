@@ -16,85 +16,106 @@ private:
 	PMDRenderer& _renderer;
 	Dx12Wrapper& _dx12;
 
-	// ƒ}ƒeƒŠƒAƒ‹ƒf[ƒ^
-	struct MaterialForHlsl// ƒVƒF[ƒ_[‘¤‚É“Š‚°‚ç‚ê‚éƒ}ƒeƒŠƒAƒ‹ƒf[ƒ^
+	// ãƒãƒ†ãƒªã‚¢ãƒ«ãƒ‡ãƒ¼ã‚¿
+	struct MaterialForHlsl// ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼å´ã«æŠ•ã’ã‚‰ã‚Œã‚‹ãƒãƒ†ãƒªã‚¢ãƒ«ãƒ‡ãƒ¼ã‚¿
 	{
-		DirectX::XMFLOAT3 diffuse; // ƒfƒBƒtƒ…[ƒYF
-		float alpha; // ƒfƒBƒtƒ…[ƒYƒ¿
-		DirectX::XMFLOAT3 specular; // ƒXƒyƒLƒ…ƒ‰F
-		float specularity; // ƒXƒyƒLƒ…ƒ‰‚Ì‹­‚³iæZ’lj
-		DirectX::XMFLOAT3 ambient; // ƒAƒ“ƒrƒGƒ“ƒgF
+		DirectX::XMFLOAT3 diffuse; // ãƒ‡ã‚£ãƒ•ãƒ¥ãƒ¼ã‚ºè‰²
+		float alpha; // ãƒ‡ã‚£ãƒ•ãƒ¥ãƒ¼ã‚ºÎ±
+		DirectX::XMFLOAT3 specular; // ã‚¹ãƒšã‚­ãƒ¥ãƒ©è‰²
+		float specularity; // ã‚¹ãƒšã‚­ãƒ¥ãƒ©ã®å¼·ã•ï¼ˆä¹—ç®—å€¤ï¼‰
+		DirectX::XMFLOAT3 ambient; // ã‚¢ãƒ³ãƒ“ã‚¨ãƒ³ãƒˆè‰²
 	};
 
-	struct AdditionalMaterial// ‚»‚êˆÈŠO‚Ìƒ}ƒeƒŠƒAƒ‹ƒf[ƒ^
+	struct AdditionalMaterial// ãã‚Œä»¥å¤–ã®ãƒãƒ†ãƒªã‚¢ãƒ«ãƒ‡ãƒ¼ã‚¿
 	{
-		std::string texPath; // ƒeƒNƒXƒ`ƒƒƒtƒ@ƒCƒ‹ƒpƒX
-		int toonIdx; // ƒgƒD[ƒ“”Ô†
-		bool edgeFlg; // ƒ}ƒeƒŠƒAƒ‹‚²‚Æ‚Ì—ÖŠsüƒtƒ‰ƒO
+		std::string texPath; // ãƒ†ã‚¯ã‚¹ãƒãƒ£ãƒ•ã‚¡ã‚¤ãƒ«ãƒ‘ã‚¹
+		int toonIdx; // ãƒˆã‚¥ãƒ¼ãƒ³ç•ªå·
+		bool edgeFlg; // ãƒãƒ†ãƒªã‚¢ãƒ«ã”ã¨ã®è¼ªéƒ­ç·šãƒ•ãƒ©ã‚°
 	};
 
-	struct Material// ‘S‘Ì‚ğ‚Ü‚Æ‚ß‚éƒf[ƒ^
+	struct Material// å…¨ä½“ã‚’ã¾ã¨ã‚ã‚‹ãƒ‡ãƒ¼ã‚¿
 	{
-		unsigned int indicesNum; // ƒCƒ“ƒfƒbƒNƒX”
+		unsigned int indicesNum; // ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹æ•°
 		MaterialForHlsl material;
 		AdditionalMaterial additional;
 	};
-	unsigned int _materialNum; // ƒ}ƒeƒŠƒAƒ‹”
+	unsigned int _materialNum; // ãƒãƒ†ãƒªã‚¢ãƒ«æ•°
 	std::vector<Material> materials;
 	Microsoft::WRL::ComPtr<ID3D12Resource> _materialBuff = nullptr;
 	std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> _textureResources;
 	std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> _sphResources;
 	std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> _spaResources;
 	std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> _toonResources;
-	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _materialDescHeap = nullptr;//ƒ}ƒeƒŠƒAƒ‹ƒq[ƒv(5ŒÂ‚Ô‚ñ)
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _materialDescHeap = nullptr;//ãƒãƒ†ãƒªã‚¢ãƒ«ãƒ’ãƒ¼ãƒ—(5å€‹ã¶ã‚“)
 
-	//’¸“_
+	//é ‚ç‚¹
 	Microsoft::WRL::ComPtr<ID3D12Resource> _vertBuff = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12Resource> _idxBuff = nullptr;
 	D3D12_VERTEX_BUFFER_VIEW _vbView = {};
 	D3D12_INDEX_BUFFER_VIEW _ibView = {};
 
-	// À•W•ÏŠ·
+	// åº§æ¨™å¤‰æ›
 	struct Transform {
-		//“à•”‚É‚Á‚Ä‚éXMMATRIXƒƒ“ƒo‚ª16ƒoƒCƒgƒAƒ‰ƒCƒƒ“ƒg‚Å‚ ‚é‚½‚ß
-		//Transform‚ğnew‚·‚éÛ‚É‚Í16ƒoƒCƒg‹«ŠE‚ÉŠm•Û‚·‚é
+		//å†…éƒ¨ã«æŒã£ã¦ã‚‹XMMATRIXãƒ¡ãƒ³ãƒãŒ16ãƒã‚¤ãƒˆã‚¢ãƒ©ã‚¤ãƒ¡ãƒ³ãƒˆã§ã‚ã‚‹ãŸã‚
+		//Transformã‚’newã™ã‚‹éš›ã«ã¯16ãƒã‚¤ãƒˆå¢ƒç•Œã«ç¢ºä¿ã™ã‚‹
 		void* operator new(size_t size);
 		DirectX::XMMATRIX world;
 	};
 	Transform _transform;
 	DirectX::XMMATRIX* _mappedMatrices = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12Resource> _transformBuff = nullptr;
-	Microsoft::WRL::ComPtr<ID3D12Resource> _transformMat = nullptr;//À•W•ÏŠ·s—ñ(¡‚Íƒ[ƒ‹ƒh‚Ì‚İ)
-	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _transformHeap = nullptr;//À•W•ÏŠ·ƒq[ƒv
+	Microsoft::WRL::ComPtr<ID3D12Resource> _transformMat = nullptr;//åº§æ¨™å¤‰æ›è¡Œåˆ—(ä»Šã¯ãƒ¯ãƒ¼ãƒ«ãƒ‰ã®ã¿)
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> _transformHeap = nullptr;//åº§æ¨™å¤‰æ›ãƒ’ãƒ¼ãƒ—
 
-	//ƒ{[ƒ“ŠÖ˜A
-	std::vector<DirectX::XMMATRIX> _boneMatrices;// GPU‚ÖƒRƒs[‚·‚é‚½‚ß‚Ìƒ{[ƒ“î•ñ
+	//ãƒœãƒ¼ãƒ³é–¢é€£
+	std::vector<DirectX::XMMATRIX> _boneMatrices;// GPUã¸ã‚³ãƒ”ãƒ¼ã™ã‚‹ãŸã‚ã®ãƒœãƒ¼ãƒ³æƒ…å ±
 
 	struct BoneNode {
-		int boneIdx;					//ƒ{[ƒ“ƒCƒ“ƒfƒbƒNƒX
-		DirectX::XMFLOAT3 startPos;		//ƒ{[ƒ“Šî€“_(‰ñ“]’†S)
-		std::vector<BoneNode*> children;//qƒm[ƒh
+		int boneIdx;					//ãƒœãƒ¼ãƒ³ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹
+		DirectX::XMFLOAT3 startPos;		//ãƒœãƒ¼ãƒ³åŸºæº–ç‚¹(å›è»¢ä¸­å¿ƒ)
+		std::vector<BoneNode*> children;//å­ãƒãƒ¼ãƒ‰
 	};
-	std::map<std::string, BoneNode> _boneNodeTable;// –¼‘O‚Åœ‚ğŒŸõ‚Å‚«‚é‚æ‚¤‚É
+	std::map<std::string, BoneNode> _boneNodeTable;// åå‰ã§éª¨ã‚’æ¤œç´¢ã§ãã‚‹ã‚ˆã†ã«
 
 	void RecursiveMattrixMultipy(BoneNode& node, const DirectX::XMMATRIX& mat);
 
-	float _angle;//ƒeƒXƒg—pY²‰ñ“]
+	float _angle;//ãƒ†ã‚¹ãƒˆç”¨Yè»¸å›è»¢
+
+	//ã‚­ãƒ¼ãƒ•ãƒ¬ãƒ¼ãƒ æ§‹é€ ä½“
+	struct KeyFrame {
+		unsigned int frameNo;  //ãƒ•ãƒ¬ãƒ¼ãƒ No.(ã‚¢ãƒ‹ãƒ¡ãƒ¼ã‚·ãƒ§ãƒ³é–‹å§‹ã‹ã‚‰ã®çµŒéæ™‚é–“)
+		DirectX::XMVECTOR quaternion ;  //ã‚¯ã‚ªãƒ¼ã‚¿ãƒ‹ã‚ªãƒ³
+		DirectX::XMFLOAT2 p1, p2;
+		KeyFrame(
+			unsigned int fno, const DirectX::XMVECTOR& q,
+			const DirectX::XMFLOAT2 ip1,const DirectX::XMFLOAT2 ip2) :
+			frameNo(fno),
+			quaternion(q),p1(ip1),p2(ip2) {}
+	};
+	std::map<std::string, std::vector<KeyFrame>>_motiondata;
+
+	DWORD _startTime;  //ã‚¢ãƒ‹ãƒ¡ãƒ¼ã‚·ãƒ§ãƒ³é–‹å§‹æ™‚ç‚¹ã®ãƒŸãƒªç§’æ™‚åˆ»
+	unsigned int _duration = 0;
+	void MotionUpdate();
 
 public:
-	// ‰Šú‰»‚Ì•”•ªˆ—
-	HRESULT LoadPMDFile(const char* path);//PMDƒtƒ@ƒCƒ‹‚Ìƒ[ƒh
-	void CreateMaterialData();//“Ç‚İ‚ñ‚¾ƒ}ƒeƒŠƒAƒ‹‚ğ‚à‚Æ‚Éƒ}ƒeƒŠƒAƒ‹ƒoƒbƒtƒ@‚ğì¬
-	void CreateMaterialAndTextureView();//ƒ}ƒeƒŠƒAƒ‹•ƒeƒNƒXƒ`ƒƒ‚Ìƒrƒ…[‚ğì¬
+	// åˆæœŸåŒ–ã®éƒ¨åˆ†å‡¦ç†
+	HRESULT LoadPMDFile(const char* path);//PMDãƒ•ã‚¡ã‚¤ãƒ«ã®ãƒ­ãƒ¼ãƒ‰
+	void CreateMaterialData();//èª­ã¿è¾¼ã‚“ã ãƒãƒ†ãƒªã‚¢ãƒ«ã‚’ã‚‚ã¨ã«ãƒãƒ†ãƒªã‚¢ãƒ«ãƒãƒƒãƒ•ã‚¡ã‚’ä½œæˆ
+	void CreateMaterialAndTextureView();//ãƒãƒ†ãƒªã‚¢ãƒ«ï¼†ãƒ†ã‚¯ã‚¹ãƒãƒ£ã®ãƒ“ãƒ¥ãƒ¼ã‚’ä½œæˆ
 	void CreateTransformView();
 
 public:
 	PMDActor(const char* filepath, PMDRenderer& renderer);
 	~PMDActor();
 
-	///ƒNƒ[ƒ“‚Í’¸“_‚¨‚æ‚Ñƒ}ƒeƒŠƒAƒ‹‚Í‹¤’Ê‚Ìƒoƒbƒtƒ@‚ğŒ©‚é‚æ‚¤‚É‚·‚é
+	///ã‚¯ãƒ­ãƒ¼ãƒ³ã¯é ‚ç‚¹ãŠã‚ˆã³ãƒãƒ†ãƒªã‚¢ãƒ«ã¯å…±é€šã®ãƒãƒƒãƒ•ã‚¡ã‚’è¦‹ã‚‹ã‚ˆã†ã«ã™ã‚‹
 	PMDActor* Clone();
+
+	void LoadVMDFile(const char* filepath, const char* name);
 
 	void Update();
 	void Draw();
+
+	void PlayAnimation();
 };
