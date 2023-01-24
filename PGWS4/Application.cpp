@@ -74,7 +74,8 @@ bool Application::Init()
 
 	//パスを指定
 	_pmdActor.reset(new PMDActor("Model/初音ミク.pmd", *_pmdRenderer));
-	_pmdActor->LoadVMDFile("motion/pose.vmd", "pose");
+	_pmdActor->LoadVMDFile("motion/Miku.vmd", "pose");
+	_pmdActor->PlayAnimation();
 
 	return true;
 }
