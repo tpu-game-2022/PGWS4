@@ -78,9 +78,12 @@ bool Application::Init()
 
 	_dx12.reset(new Dx12Wrapper(_hwnd, _window_width, _window_height));
 	_pmdRenderer.reset(new PMDRenderer(*_dx12));
-	//  Model/巡音ルカ.pmd 初音ミクmetal.pmd 初音ミクVer2.pmd
-	_pmdActor.reset(new PMDActor("Model/初音ミク.pmd", *_pmdRenderer));
-	_pmdActor->LoadVMDFile("motion/pose.vmd", "pose");
+	//  Model/巡音ルカ.pmd 初音ミクmetal.pmd 初音ミクVer2.pmd 初音ミク.pmd
+	_pmdActor.reset(new PMDActor("Model/初音ミクmetal.pmd", *_pmdRenderer));
+	//motion/pose.vmd  motion/swing.vmd  motion/motion.vmd motion/avs.vmd  
+	_pmdActor->LoadVMDFile("motion/good3.vmd", "pose"); //他のアニメーション(グッジョブポーズ)
+	_pmdActor->PlayAnimaton();
+
 	return true;
 }
 
